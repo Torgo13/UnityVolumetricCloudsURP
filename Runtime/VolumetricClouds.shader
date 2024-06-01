@@ -56,7 +56,7 @@ Shader "Hidden/Sky/VolumetricClouds"
 			HLSLPROGRAM
 			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 			// The Blit.hlsl file provides the vertex shader (Vert),
-			// input structure (Attributes) and output strucutre (Varyings)
+			// input structure (Attributes) and output structure (Varyings)
 			#include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
 			
 			#pragma vertex Vert
@@ -89,6 +89,12 @@ Shader "Hidden/Sky/VolumetricClouds"
                 float depth = SAMPLE_TEXTURE2D_X_LOD(_CameraDepthTexture, sampler_CameraDepthTexture, screenUV, 0).r;
                 // If the current pixel is sky
                 bool isOccluded = depth != UNITY_RAW_FAR_CLIP_VALUE;
+                
+            #ifndef _LOCAL_VOLUMETRIC_CLOUDS
+                // Exit if object is in front of the global cloud.
+                if (isOccluded)
+                    return half4(0.0, 0.0, 0.0, 1.0);
+            #endif
 
             #if !UNITY_REVERSED_Z
                 depth = lerp(UNITY_NEAR_CLIP_VALUE, 1, depth);
@@ -97,12 +103,6 @@ Shader "Hidden/Sky/VolumetricClouds"
                 // Calculate the virtual position of skybox for view direction calculation
                 float3 positionWS = ComputeWorldSpacePosition(screenUV, UNITY_RAW_FAR_CLIP_VALUE, UNITY_MATRIX_I_VP);
                 half3 invViewDirWS = normalize(positionWS - GetCameraPositionWS());
-                
-            #ifndef _LOCAL_VOLUMETRIC_CLOUDS
-                // Exit if object is in front of the global cloud.
-                if (isOccluded)
-                    return half4(0.0, 0.0, 0.0, 1.0);
-            #endif
 
                 Ray ray = BuildCloudsRay(screenUV, depth, invViewDirWS, isOccluded);
 
@@ -145,7 +145,7 @@ Shader "Hidden/Sky/VolumetricClouds"
 			HLSLPROGRAM
 			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 			// The Blit.hlsl file provides the vertex shader (Vert),
-			// input structure (Attributes) and output strucutre (Varyings)
+			// input structure (Attributes) and output structure (Varyings)
 			#include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
 			
 			#pragma vertex Vert
@@ -193,7 +193,7 @@ Shader "Hidden/Sky/VolumetricClouds"
 			HLSLPROGRAM
 			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 			// The Blit.hlsl file provides the vertex shader (Vert),
-			// input structure (Attributes) and output strucutre (Varyings)
+			// input structure (Attributes) and output structure (Varyings)
 			#include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
 			
 			#pragma vertex Vert
@@ -241,7 +241,7 @@ Shader "Hidden/Sky/VolumetricClouds"
 			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
 			// The Blit.hlsl file provides the vertex shader (Vert),
-			// input structure (Attributes) and output strucutre (Varyings)
+			// input structure (Attributes) and output structure (Varyings)
 			#include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
 			
 			#pragma vertex Vert
@@ -313,6 +313,11 @@ Shader "Hidden/Sky/VolumetricClouds"
 
                 half4 cloudsColor = SAMPLE_TEXTURE2D_X_LOD(_BlitTexture, s_point_clamp_sampler, screenUV, 0).rgba;
 
+                if (cloudsColor.a == 1.0)
+                {
+                    return half4(0.0, 0.0, 0.0, 0.0);
+                }
+
                 // Color Variance
                 half3 colorCenter = cloudsColor.xyz;
 
@@ -343,15 +348,15 @@ Shader "Hidden/Sky/VolumetricClouds"
             #endif
 
                 float2 prevUV = screenUV + velocity;
-                
-                // Re-projected color from last frame.
-                half3 prevColor = SAMPLE_TEXTURE2D_X_LOD(_VolumetricCloudsHistoryTexture, s_point_clamp_sampler, prevUV, 0).rgb;
 
-                if (prevUV.x > 1.0 || prevUV.x < 0.0 || prevUV.y > 1.0 || prevUV.y < 0.0 || cloudsColor.a == 1.0)
+                if (prevUV.x > 1.0 || prevUV.x < 0.0 || prevUV.y > 1.0 || prevUV.y < 0.0)
                 {
                     // return 0 alpha to keep the color in render target.
                     return half4(0.0, 0.0, 0.0, 0.0);
                 }
+                
+                // Re-projected color from last frame.
+                half3 prevColor = SAMPLE_TEXTURE2D_X_LOD(_VolumetricCloudsHistoryTexture, s_point_clamp_sampler, prevUV, 0).rgb;
 
                 // Can be replace by clamp() to reduce performance cost.
                 //prevColor.rgb = ClipToAABBCenter(prevColor.rgb, boxMin, boxMax);
