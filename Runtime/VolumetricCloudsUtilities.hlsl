@@ -104,7 +104,7 @@ float DecodeInfiniteDepth(float z, float near)
 
 #endif
 
-// Fonction that takes a world space position and converts it to a depth value
+// Function that takes a world space position and converts it to a depth value
 float ConvertCloudDepth(float3 position)
 {
     float4 hClip = TransformWorldToHClip(position);
@@ -439,7 +439,7 @@ void EvaluateCloudProperties(float3 positionPS, float noiseMipOffset, float eros
     half ambientOcclusionBlend = saturate(1.0 - max(erosionFactor, shapeFactor) * 0.5);
     properties.ambientOcclusion = lerp(1.0, properties.ambientOcclusion, ambientOcclusionBlend);
 
-    // Apply the erosion for nifer details
+    // Apply the erosion for nicer details
     if (!cheapVersion)
     {
         //half erosionMipOffset = 0.5;
