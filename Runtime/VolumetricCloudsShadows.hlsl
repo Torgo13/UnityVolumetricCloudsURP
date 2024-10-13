@@ -37,9 +37,10 @@ half3 TraceVolumetricCloudsShadows(Varyings input) : SV_Target
 
     // Intersect the outer sphere
     float radialDistance = length(rayOriginPS);
-    float cosChi = dot(rayOriginPS, rayDirection) * rcp(radialDistance);
-    float2 tInner = IntersectSphere(_LowestCloudAltitude, cosChi, radialDistance);
-    float2 tOuter = IntersectSphere(_HighestCloudAltitude, cosChi, radialDistance);
+    float rcpRadialDistance = rcp(radialDistance);
+    float cosChi = dot(rayOriginPS, rayDirection) * rcpRadialDistance;
+    float2 tInner = IntersectSphere(_LowestCloudAltitude, cosChi, radialDistance, rcpRadialDistance);
+    float2 tOuter = IntersectSphere(_HighestCloudAltitude, cosChi, radialDistance, rcpRadialDistance);
     if (tInner.y >= 0.0 && tOuter.y >= 0.0)
     {
         // Compute the integration range
