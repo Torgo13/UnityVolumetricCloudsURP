@@ -80,16 +80,31 @@ RayHit TraceCloudsRay(Ray ray)
             // Do the ray march for every step that we can.
             while (currentIndex < (int)_NumPrimarySteps && currentDistance < totalDistance)
             {
+                // Convert to planet space
+                float3 positionPS = ConvertToPS(currentPositionWS);
+                    
+                half4 terrainProperties;
+                EvaluateTerrainProperties(positionPS, terrainProperties);
+
+                if (currentPositionWS.y <= terrainProperties.w)
+                {
+                    rayHit.meanDistance = currentDistance;
+                    meanDistanceDivider = 1.0;
+                        
+                    // Evaluate the terrain at the position
+                    EvaluateTerrain(terrainProperties, ray.direction, currentPositionWS, rayMarchStartPS, rayMarchEndPS, stepS, currentDistance / totalDistance, rayHit);
+
+                    break;
+                }
+
                 // Compute the camera-distance based attenuation
                 float densityAttenuationValue = DensityFadeValue(rayMarchRange.start + currentDistance);
-                // Compute the mip offset for the erosion texture
-                float erosionMipOffset = ErosionMipOffset(rayMarchRange.start + currentDistance);
 
                 // Should we be evaluating the clouds or just doing the large ray marching
                 if (activeSampling)
-                {
-                    // Convert to planet space
-                    float3 positionPS = ConvertToPS(currentPositionWS);
+                {                    
+                    // Compute the mip offset for the erosion texture
+                    float erosionMipOffset = ErosionMipOffset(rayMarchRange.start + currentDistance);
 
                     // If the density is null, we can skip as there will be no contribution
                     CloudProperties properties;
@@ -126,16 +141,12 @@ RayHit TraceCloudsRay(Ray ray)
                         activeSampling = false;
 
                     // Do the next step
-                    float relativeStepSize = lerp(ray.integrationNoise, 1.0, saturate(currentIndex));
+                    float relativeStepSize = 1.0; //lerp(ray.integrationNoise, 1.0, saturate(currentIndex));
                     currentPositionWS += ray.direction * stepS * relativeStepSize;
                     currentDistance += stepS * relativeStepSize;
-
                 }
                 else
                 {
-                    // Convert to planet space
-                    float3 positionPS = ConvertToPS(currentPositionWS);
-
                     CloudProperties properties;
                     EvaluateCloudProperties(positionPS, 1.0, 0.0, true, false, properties);
 
@@ -148,7 +159,7 @@ RayHit TraceCloudsRay(Ray ray)
                         currentPositionWS += ray.direction * stepS * 2.0;
                         currentDistance += stepS * 2.0;
                     }
-                    else
+                    else 
                     {
                         // Somewhere between this step and the previous clouds started
                         // We reset all the counters and enable active sampling
@@ -158,13 +169,12 @@ RayHit TraceCloudsRay(Ray ray)
                         sequentialEmptySamples = 0;
                     }
                 }
+
                 currentIndex++;
             }
 
             // Normalized the depth we computed
-            if (rayHit.meanDistance == 0.0)
-                rayHit.invalidRay = true;
-            else
+            if (rayHit.meanDistance > 0.0)
             {
                 rayHit.meanDistance /= meanDistanceDivider;
                 rayHit.invalidRay = false;

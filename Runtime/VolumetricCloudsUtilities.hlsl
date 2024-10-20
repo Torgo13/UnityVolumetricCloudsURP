@@ -40,7 +40,10 @@
 #define ConvertToPS(x) (x - _PlanetCenterPosition)
 
 // Used in perceptual blending, not implemented.
+#if OPTIMISATION
+#else
 #define _ImprovedTransmittanceBlend 1.0
+#endif // OPTIMISATION
 
 struct Ray
 {
@@ -80,7 +83,11 @@ half EvaluateFinalTransmittance(half3 color, half transmittance)
     resultLuminance = resultLuminance * rcp(1.0 - resultLuminance);
 
     // This approach only makes sense if the color is not black
+#if OPTIMISATION
+    return luminance > 0.0 ? resultLuminance * rcp(luminance) : transmittance;
+#else
     return luminance > 0.0 ? lerp(transmittance, resultLuminance * rcp(luminance), _ImprovedTransmittanceBlend) : transmittance;
+#endif // OPTIMISATION
 }
 
 // These 2 functions were moved to the Core RP package by the commit below:
@@ -351,6 +358,12 @@ void GetCloudCoverageData(float3 positionPS, out CloudCoverageData data)
     data.maxCloudHeight = cloudMapData.w;
 }
 
+// Function that evaluates the coverage data for a given point in planet space
+void GetTerrainData(float3 positionPS, out half4 data)
+{
+    data = SAMPLE_TEXTURE2D_LOD(_BaseMap, sampler_point_mirror, (positionPS.xz - _SnapshotData.xy) * _SnapshotData.z, 0); // TODO mad instead of adm
+}
+
 // Density remapping function
 half DensityRemap(half x, half a, half b, half c, half d)
 {
@@ -369,7 +382,7 @@ half PowderEffect(half cloudDensity, half cosAngle, half intensity)
 void EvaluateCloudProperties(float3 positionPS, float noiseMipOffset, float erosionMipOffset, bool cheapVersion, bool lightSampling,
                             out CloudProperties properties)
 {
-    // Initliaze all the values to 0 in case
+    // Initialise all the values to 0 in case
     ZERO_INITIALIZE(CloudProperties, properties);
 
 //#ifndef CLOUDS_SIMPLE_PRESET
@@ -381,7 +394,6 @@ void EvaluateCloudProperties(float3 positionPS, float noiseMipOffset, float eros
     if (positionPS.y < _EarthRadius)
         return;
 #endif
-
 
     // By default the ambient occlusion is 1.0
     properties.ambientOcclusion = 1.0;
@@ -471,6 +483,19 @@ void EvaluateCloudProperties(float3 positionPS, float noiseMipOffset, float eros
 
     // Attenuate everything by the density multiplier
     properties.density = base_cloud * _DensityMultiplier;
+}
+
+// Function that evaluates the terrain properties at a given absolute world space position
+void EvaluateTerrainProperties(float3 positionPS, out half4 properties)
+{
+    // When rendering in camera space, we still want horizontal scrolling
+#ifndef _LOCAL_VOLUMETRIC_CLOUDS
+    positionPS.xz += _WorldSpaceCameraPos.xz;
+#endif
+
+    //CloudCoverageData terrainData;
+    GetTerrainData(positionPS, properties);
+    properties.w *= _TerrainData.y;
 }
 
 // Function that evaluates the luminance at a given cloud position (only the contribution of the sun)
@@ -700,6 +725,63 @@ void EvaluateCloud(CloudProperties cloudProperties, half3 rayDirection,
     const half3 integScatt = (totalLuminance - totalLuminance * transmittance);
     volumetricRay.inScattering += integScatt * volumetricRay.transmittance;
     volumetricRay.transmittance *= transmittance;
+}
+
+// Evaluates the terrain colour from this position
+void EvaluateTerrain(half4 terrainProperties, half3 rayDirection,
+    float3 currentPositionWS, float3 entryEvaluationPointPS, float3 exitEvaluationPointPS, 
+    float stepSize, float relativeRayDistance, inout RayHit volumetricRay)
+{
+    Light sun = GetMainLight();
+    //half cosAngle = dot(rayDirection, sun.direction);
+
+    // Evaluate the sun color at the position
+#if defined(_PHYSICALLY_BASED_SUN)
+    half3 sunColor = EvaluateSunColor(entryEvaluationPointPS, exitEvaluationPointPS, sun.direction, sun.color, relativeRayDistance);
+#else
+    half3 sunColor = sun.color;
+#endif
+
+    volumetricRay.inScattering = terrainProperties.xyz * sunColor;
+
+    float3 wpos = floor(currentPositionWS) + 0.5;
+
+    // compute normal
+    float3 dc = abs(currentPositionWS - wpos);
+    dc.y *= 1.05; // avoid artifacts at the edges
+    float3 norm = float3(0, -rayDirection.y, 0);
+
+    // add water
+    if (currentPositionWS.y >= _TerrainData.z) {
+        if (dc.z > dc.x && dc.z > dc.y) norm = float3(0, 0, -sign(rayDirection.z));
+        if (dc.x > dc.z && dc.x > dc.y) norm = float3(-sign(rayDirection.x), 0, 0);
+    }
+
+    // apply shadow attenuation
+    half ao = saturate(0.25 + frac(currentPositionWS.y) * 0.75 + relativeRayDistance);
+    half atten = half(0.5);
+    atten = saturate(saturate(atten + sun.direction.y * _VPDaylightShadowAtten) + _VPAmbientLight);
+    volumetricRay.inScattering *= min((atten * ao), 1.2);
+
+    // diffuse lambertian wrap
+    norm = normalize(norm);
+    half ndt = saturate(dot(norm, sun.direction.xyz) * 0.5 + 0.5);
+    volumetricRay.inScattering *= lerp(ndt, 1.0, relativeRayDistance);
+
+    // day/night cycle
+    volumetricRay.inScattering *= saturate(1.0 + sun.direction.y * 2.0);
+
+    // add fog
+    half fogFactor = (_SunLightColor.a * 512.0) * (_SnapshotData.w / relativeRayDistance);
+    half heightFog = currentPositionWS.y / _TerrainData.y;
+    heightFog *= heightFog;
+    half fog = saturate(fogFactor * fogFactor);
+
+    //volumetricRay.inScattering *= fog;
+    //volumetricRay.transmittance = fog + fogFactor * heightFog;
+
+    //volumetricRay.inScattering = sunColor * terrainProperties.xyz;
+    volumetricRay.transmittance = 0.0;
 }
 
 #endif
