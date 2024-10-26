@@ -250,10 +250,10 @@ bool IntersectCloudVolume(float3 originPS, half3 dir, float lowerBoundPS, float 
     {
         // The ray starts at the intersection with the outer bound, or at 0 if we are inside
         // The ray ends at the lower bound if we hit it, at the outer bound otherwise
-        tEntry = max(tOuter.x, 0.0f);
+        tEntry = max(tOuter.x, 0.0);
         tExit = tInner.x >= 0.0 ? tInner.x : tOuter.y;
         // We don't see the clouds if we don't hit the outer bound
-        intersect = tOuter.y >= 0.0f;
+        intersect = tOuter.y >= 0.0;
     }
 
     return intersect;
@@ -493,7 +493,6 @@ void EvaluateTerrainProperties(float3 positionPS, out half4 properties)
     positionPS.xz += _WorldSpaceCameraPos.xz;
 #endif
 
-    //CloudCoverageData terrainData;
     GetTerrainData(positionPS, properties);
     properties.w *= _TerrainData.y;
 }
@@ -729,39 +728,33 @@ void EvaluateCloud(CloudProperties cloudProperties, half3 rayDirection,
 
 // Evaluates the terrain colour from this position
 void EvaluateTerrain(half4 terrainProperties, half3 rayDirection,
-    float3 currentPositionWS, float3 entryEvaluationPointPS, float3 exitEvaluationPointPS, 
+    float3 currentPositionWS, float3 entryEvaluationPointPS, float3 exitEvaluationPointPS,
+    half atten,
     float stepSize, float relativeRayDistance, inout RayHit volumetricRay)
 {
+    // TODO Get sun intensity
     Light sun = GetMainLight();
-    //half cosAngle = dot(rayDirection, sun.direction);
 
     // Evaluate the sun color at the position
-#if defined(_PHYSICALLY_BASED_SUN)
+/*#if defined(_PHYSICALLY_BASED_SUN)
     half3 sunColor = EvaluateSunColor(entryEvaluationPointPS, exitEvaluationPointPS, sun.direction, sun.color, relativeRayDistance);
-#else
+#else*/
     half3 sunColor = sun.color;
-#endif
+//#endif
 
     volumetricRay.inScattering = terrainProperties.xyz * sunColor;
 
     float3 wpos = floor(currentPositionWS) + 0.5;
 
     // compute normal
-    float3 dc = abs(currentPositionWS - wpos);
-    dc.y *= 1.05; // avoid artifacts at the edges
-    float3 norm = float3(0, -rayDirection.y, 0);
-
-    // add water
-    if (currentPositionWS.y >= _TerrainData.z) {
-        if (dc.z > dc.x && dc.z > dc.y) norm = float3(0, 0, -sign(rayDirection.z));
-        if (dc.x > dc.z && dc.x > dc.y) norm = float3(-sign(rayDirection.x), 0, 0);
-    }
+    half3 dc = abs(currentPositionWS - wpos);
+    dc.y *= half(1.05); // avoid artifacts at the edges
+    half3 norm = half3(0.0, -rayDirection.y, 0.0);
+    if (dc.z > dc.x && dc.z > dc.y) norm = half3(0.0, 0.0, -sign(rayDirection.z));
+    if (dc.x > dc.z && dc.x > dc.y) norm = half3(-sign(rayDirection.x), 0.0, 0.0);
 
     // apply shadow attenuation
-    half ao = saturate(0.25 + frac(currentPositionWS.y) * 0.75 + relativeRayDistance);
-    half atten = half(0.5);
-    atten = saturate(saturate(atten + sun.direction.y * _VPDaylightShadowAtten) + _VPAmbientLight);
-    volumetricRay.inScattering *= min((atten * ao), 1.2);
+    volumetricRay.inScattering *= atten;
 
     // diffuse lambertian wrap
     norm = normalize(norm);
@@ -772,16 +765,13 @@ void EvaluateTerrain(half4 terrainProperties, half3 rayDirection,
     volumetricRay.inScattering *= saturate(1.0 + sun.direction.y * 2.0);
 
     // add fog
-    half fogFactor = (_SunLightColor.a * 512.0) * (_SnapshotData.w / relativeRayDistance);
+    half fogFactor = saturate(_TerrainData.z / relativeRayDistance);
     half heightFog = currentPositionWS.y / _TerrainData.y;
-    heightFog *= heightFog;
-    half fog = saturate(fogFactor * fogFactor);
+    heightFog *= heightFog * fogFactor;
+    half fog = saturate(fogFactor * fogFactor + heightFog);
 
-    //volumetricRay.inScattering *= fog;
-    //volumetricRay.transmittance = fog + fogFactor * heightFog;
-
-    //volumetricRay.inScattering = sunColor * terrainProperties.xyz;
-    volumetricRay.transmittance = 0.0;
+    volumetricRay.inScattering *= fog * fog;
+    volumetricRay.transmittance = half(1.0) - fog;
 }
 
 #endif

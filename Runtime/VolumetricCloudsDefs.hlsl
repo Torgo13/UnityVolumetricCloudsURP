@@ -36,6 +36,8 @@ float _EarthRadius;
 half _AccumulationFactor;
 half _NormalizationFactor;
 half _CloudNearPlane;
+float4 _SnapshotData; // x: boundsMin.x, y: boundsMin.z, z: 1 / TEXTURE_SIZE (1 / 4096), w: FogFactor
+half4 _TerrainData; // x: _TerrainMinDistance, y: _TerrainMaxAltitude, z: _FadeIn, w: _Quality
 CBUFFER_END
 
 #endif

@@ -82,19 +82,65 @@ RayHit TraceCloudsRay(Ray ray)
             {
                 // Convert to planet space
                 float3 positionPS = ConvertToPS(currentPositionWS);
-                    
-                half4 terrainProperties;
-                EvaluateTerrainProperties(positionPS, terrainProperties);
 
-                if (currentPositionWS.y <= terrainProperties.w)
+                // Only check for terrain below the maximum terrain height
+                if (_TerrainData.z > half(0.0) && currentPositionWS.y < _TerrainData.y)
                 {
-                    rayHit.meanDistance = currentDistance;
-                    meanDistanceDivider = 1.0;
-                        
-                    // Evaluate the terrain at the position
-                    EvaluateTerrain(terrainProperties, ray.direction, currentPositionWS, rayMarchStartPS, rayMarchEndPS, stepS, currentDistance / totalDistance, rayHit);
+                    activeSampling = true;
 
-                    break;
+                    half4 terrainProperties;
+                    EvaluateTerrainProperties(positionPS, terrainProperties);
+
+                    if (currentPositionWS.y < terrainProperties.w)
+                    {
+                        // Refine hit position using binary search
+                        float3 wpos;
+                        float relativeRayDistance = currentDistance / 512.0;
+                        float t1 = currentDistance; // Current distance
+                        float t0 = currentDistance - stepS; // Previous distance
+                        half ao = half(1.0);
+                        for (int i = 0; i < _TerrainData.w; i++) {
+                            currentDistance = (t1 + t0) * 0.5; // Midpoint between previous and current distance
+                            currentPositionWS = ray.originWS + (rayMarchRange.start + currentDistance) * ray.direction;
+                            wpos = floor(currentPositionWS) + 0.5;
+                            EvaluateTerrainProperties(ConvertToPS(wpos), terrainProperties);
+                            if (wpos.y < terrainProperties.w) {
+                                t1 = currentDistance;
+                                relativeRayDistance = currentDistance / 512.0;
+                                ao = saturate(0.25 + frac(currentPositionWS.y) * 0.75 + relativeRayDistance);
+                            } else {
+                                t0 = currentDistance;
+                            }
+                        }
+                        
+                        half atten = half(1.0);
+
+                        //if (_ShadowIntensity > half(0.0))
+                        {
+                            half4 terrainShadowProperties;
+                            const half incr = half(1.015);
+                            for (float j = 2.0; j < _TerrainData.y; j = j * incr + incr) {
+                                float3 rpos = currentPositionWS + _MainLightPosition.xyz * j;
+                                if (rpos.y > _TerrainData.y) {
+                                    break; // Above terrain max altitude so in direct light
+                                }
+                    
+                                EvaluateTerrainProperties(ConvertToPS(rpos), terrainShadowProperties);
+                                if (rpos.y < terrainShadowProperties.w) {
+                                    atten = _ShadowIntensity;
+                                    break;
+                                }
+                            }
+                        }
+
+                        rayHit.meanDistance = currentDistance;
+                        meanDistanceDivider = 1.0;
+                        
+                        // Evaluate the terrain at the position
+                        atten = saturate(saturate(atten + _MainLightPosition.y * _VPDaylightShadowAtten) + _VPAmbientLight);
+                        EvaluateTerrain(terrainProperties, ray.direction, currentPositionWS, rayMarchStartPS, rayMarchEndPS, saturate(ao * atten), stepS, relativeRayDistance, rayHit);
+                        break;
+                    }
                 }
 
                 // Compute the camera-distance based attenuation
@@ -102,7 +148,7 @@ RayHit TraceCloudsRay(Ray ray)
 
                 // Should we be evaluating the clouds or just doing the large ray marching
                 if (activeSampling)
-                {                    
+                {
                     // Compute the mip offset for the erosion texture
                     float erosionMipOffset = ErosionMipOffset(rayMarchRange.start + currentDistance);
 
@@ -141,7 +187,7 @@ RayHit TraceCloudsRay(Ray ray)
                         activeSampling = false;
 
                     // Do the next step
-                    float relativeStepSize = 1.0; //lerp(ray.integrationNoise, 1.0, saturate(currentIndex));
+                    float relativeStepSize = lerp(ray.integrationNoise, 1.0, saturate(currentIndex));
                     currentPositionWS += ray.direction * stepS * relativeStepSize;
                     currentDistance += stepS * relativeStepSize;
                 }

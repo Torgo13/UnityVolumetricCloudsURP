@@ -43,9 +43,8 @@ Shader "Hidden/Sky/VolumetricClouds"
         [HideInInspector] _CloudNearPlane("Cloud Near Plane", Float) = 0.3
 
         [MainTexture][NoScaleOffset] _BaseMap("Texture", 2D) = "black" {}
-        _TerrainData("Terrain Data", Vector) = (0.0, 0.0, 0.0, 0.0) // x: _TerrainMinDistance, y: _TerrainMaxAltitude, z: _WaterLevel, w: _Quality
+        _TerrainData("Terrain Data", Vector) = (0.0, 0.0, 0.0, 0.0) // x: _TerrainMinDistance, y: _TerrainMaxAltitude, z: _FadeIn, w: _Quality
         _SnapshotData("Snapshot Data", Vector) = (0.0, 0.0, 0.0, 0.0) // x: boundsMin.x, y: boundsMin.z, z: 1 / TEXTURE_SIZE (1 / 4096), w: FogFactor
-        //_SunLightColor("Sun Light Color", Color) = (0.0, 0.0, 1.0, 1.0) // a: fadeIn
     }
 
     SubShader
@@ -84,12 +83,9 @@ Shader "Hidden/Sky/VolumetricClouds"
             TEXTURE2D(_BaseMap);
             SAMPLER(sampler_point_mirror);
             
-            float4 _SnapshotData; // x: boundsMin.x, y: boundsMin.z, z: 1 / TEXTURE_SIZE (1 / 4096), w: FogFactor
-            half4 _TerrainData; // x: _TerrainMinDistance, y: _TerrainMaxAltitude, z: _WaterLevel, w: _Quality
-            half4 _SunLightColor; // a: fadeIn
-            half _VPAmbientLight, _VPDaylightShadowAtten, _ShadowIntensity;
-            //uniform half4 _LightData; // x: _VPAmbientLight, y: _VPDaylightShadowAtten, z: _ShadowIntensity, w: fadeIn
-
+            half _ShadowIntensity;
+            half _VPAmbientLight;
+            half _VPDaylightShadowAtten;
 
             #pragma multi_compile_local_fragment _ _CLOUDS_MICRO_EROSION
             #pragma multi_compile_local_fragment _ _CLOUDS_AMBIENT_PROBE
@@ -421,13 +417,6 @@ Shader "Hidden/Sky/VolumetricClouds"
 
             TEXTURE2D(_BaseMap);
             SAMPLER(sampler_point_mirror);
-            
-            float4 _SnapshotData; // x: boundsMin.x, y: boundsMin.z, z: 1 / TEXTURE_SIZE (1 / 4096), w: FogFactor
-            half4 _TerrainData; // x: _TerrainMinDistance, y: _TerrainMaxAltitude, z: _WaterLevel, w: _Quality
-            half4 _SunLightColor; // a: fadeIn
-            half _VPAmbientLight, _VPDaylightShadowAtten;//, _ShadowIntensity;
-            //uniform half4 _LightData; // x: _VPAmbientLight, y: _VPDaylightShadowAtten, z: _ShadowIntensity, w: fadeIn
-
 
             // URP pre-defined the following variable on 2023.2+.
         #if UNITY_VERSION < 202320
@@ -474,13 +463,6 @@ Shader "Hidden/Sky/VolumetricClouds"
 
             TEXTURE2D(_BaseMap);
             SAMPLER(sampler_point_mirror);
-            
-            float4 _SnapshotData; // x: boundsMin.x, y: boundsMin.z, z: 1 / TEXTURE_SIZE (1 / 4096), w: FogFactor
-            half4 _TerrainData; // x: _TerrainMinDistance, y: _TerrainMaxAltitude, z: _WaterLevel, w: _Quality
-            half4 _SunLightColor; // a: fadeIn
-            half _VPAmbientLight, _VPDaylightShadowAtten;//, _ShadowIntensity;
-            //uniform half4 _LightData; // x: _VPAmbientLight, y: _VPDaylightShadowAtten, z: _ShadowIntensity, w: fadeIn
-
 
             // URP pre-defined the following variable on 2023.2+.
         #if UNITY_VERSION < 202320
