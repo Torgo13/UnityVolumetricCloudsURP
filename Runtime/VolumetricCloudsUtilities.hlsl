@@ -359,9 +359,9 @@ void GetCloudCoverageData(float3 positionPS, out CloudCoverageData data)
 }
 
 // Function that evaluates the coverage data for a given point in planet space
-void GetTerrainData(float3 positionPS, out half4 data)
+void GetTerrainData(float3 positionPS, int mipOffset, out half4 data)
 {
-    data = SAMPLE_TEXTURE2D_LOD(_BaseMap, sampler_point_mirror, (positionPS.xz - _SnapshotData.xy) * _SnapshotData.z, 0); // TODO mad instead of adm
+    data = SAMPLE_TEXTURE2D_LOD(_BaseMap, sampler_point_mirror, (positionPS.xz - _SnapshotData.xy) * _BaseMap_TexelSize.x, mipOffset); // TODO mad instead of adm
 }
 
 // Density remapping function
@@ -486,14 +486,14 @@ void EvaluateCloudProperties(float3 positionPS, float noiseMipOffset, float eros
 }
 
 // Function that evaluates the terrain properties at a given absolute world space position
-void EvaluateTerrainProperties(float3 positionPS, out half4 properties)
+void EvaluateTerrainProperties(float3 positionPS, int mipOffset, out half4 properties)
 {
     // When rendering in camera space, we still want horizontal scrolling
 #ifndef _LOCAL_VOLUMETRIC_CLOUDS
     positionPS.xz += _WorldSpaceCameraPos.xz;
 #endif
 
-    GetTerrainData(positionPS, properties);
+    GetTerrainData(positionPS, mipOffset, properties);
     properties.w *= _TerrainData.y;
 }
 

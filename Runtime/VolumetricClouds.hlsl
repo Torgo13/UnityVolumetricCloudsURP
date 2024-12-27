@@ -76,6 +76,8 @@ RayHit TraceCloudsRay(Ray ray)
             // Initialize the values for the optimized ray marching
             bool activeSampling = true;
             int sequentialEmptySamples = 0;
+            
+            int snapshotSize = _BaseMap_TexelSize.z; //4096; //rcp(_SnapshotData.z);
 
             // Do the ray march for every step that we can.
             while (currentIndex < (int)_NumPrimarySteps && currentDistance < totalDistance)
@@ -84,13 +86,31 @@ RayHit TraceCloudsRay(Ray ray)
                 float3 positionPS = ConvertToPS(currentPositionWS);
 
                 // Only check for terrain below the maximum terrain height
-                if (_TerrainData.z > half(0.0) && currentPositionWS.y < _TerrainData.y)
+                if (_TerrainData.z > half(0.0) && currentPositionWS.y < _TerrainData.y) // TODO replace _TerrainData.z > half(0.0) with multi_compile_local_fragment
                 {
-                    activeSampling = true;
+                    //activeSampling = true;
+
+                    // Search 1x1 mip first
+                    int mipOffset = 12; // TODO Avoid hardcoding
+                    int snapshotMipSize = snapshotSize;
 
                     half4 terrainProperties;
-                    EvaluateTerrainProperties(positionPS, terrainProperties);
 
+                    // Check if the ray intersects with the highest point of each mip level
+                    while (mipOffset > 0)
+                    {
+                        EvaluateTerrainProperties(positionPS, mipOffset, terrainProperties);
+                        if (currentPositionWS.y > terrainProperties.w)
+                        {
+                            break;
+                        }
+
+                        snapshotMipSize >>= 1;
+                        --mipOffset;
+                    }
+                    
+                    // Evaluate the full resolution terrain texture
+                    EvaluateTerrainProperties(positionPS, mipOffset, terrainProperties);
                     if (currentPositionWS.y < terrainProperties.w)
                     {
                         // Refine hit position using binary search
@@ -103,7 +123,7 @@ RayHit TraceCloudsRay(Ray ray)
                             currentDistance = (t1 + t0) * 0.5; // Midpoint between previous and current distance
                             currentPositionWS = ray.originWS + (rayMarchRange.start + currentDistance) * ray.direction;
                             wpos = floor(currentPositionWS) + 0.5;
-                            EvaluateTerrainProperties(ConvertToPS(wpos), terrainProperties);
+                            EvaluateTerrainProperties(ConvertToPS(wpos), mipOffset, terrainProperties);
                             if (wpos.y < terrainProperties.w) {
                                 t1 = currentDistance;
                                 relativeRayDistance = currentDistance / 512.0;
@@ -125,7 +145,7 @@ RayHit TraceCloudsRay(Ray ray)
                                     break; // Above terrain max altitude so in direct light
                                 }
                     
-                                EvaluateTerrainProperties(ConvertToPS(rpos), terrainShadowProperties);
+                                EvaluateTerrainProperties(ConvertToPS(rpos), mipOffset, terrainShadowProperties);
                                 if (rpos.y < terrainShadowProperties.w) {
                                     atten = _ShadowIntensity;
                                     break;
