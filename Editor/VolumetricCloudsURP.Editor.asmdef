@@ -1,13 +1,17 @@
 {
-    "name": "VolumetricCloudsURP",
+    "name": "VolumetricCloudsURP.Editor",
     "rootNamespace": "",
     "references": [
         "GUID:df380645f10b7bc4b97d4f5eb6303d95",
+        "GUID:3eae0364be2026648bf74846acb8a731",
         "GUID:15fc0a57446b3144c949da3e2b9737a9",
-        "GUID:d8b63aba1907145bea998dd612889d6b",
+        "GUID:c579267770062bf448e75eb160330b7f",
+        "GUID:4e5cd923c15d98644bd2779e74e6a0f8",
         "GUID:df833852e432e964ba35e02ff0ed74a0"
     ],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,
