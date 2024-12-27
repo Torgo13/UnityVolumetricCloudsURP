@@ -246,7 +246,7 @@ class VolumetricCloudsEditor : VolumeComponentEditor
             using (new IndentLevelScope())
             {
                 //if (hasCloudMap)
-                    //PropertyField(m_CloudMapSpeedMultiplier);
+                //PropertyField(m_CloudMapSpeedMultiplier);
                 PropertyField(m_ShapeSpeedMultiplier);
                 PropertyField(m_ErosionSpeedMultiplier);
             }
@@ -306,136 +306,136 @@ class VolumetricCloudsEditor : VolumeComponentEditor
         }
     }
     void LoadPresetValues(VolumetricClouds.CloudPresets preset, bool microDetails)
+    {
+        switch (preset)
         {
-            switch (preset)
+            case VolumetricClouds.CloudPresets.Sparse:
             {
-                case VolumetricClouds.CloudPresets.Sparse:
+                m_DensityMultiplier.value.floatValue = 0.4f;
+                if (microDetails)
                 {
-                    m_DensityMultiplier.value.floatValue = 0.4f;
-                    if (microDetails)
-                    {
-                        m_ShapeFactor.value.floatValue = 0.925f;
-                        m_ShapeScale.value.floatValue = 5.0f;
-                        m_ErosionFactor.value.floatValue = 0.85f;
-                        m_ErosionScale.value.floatValue = 75.0f;
-                        m_MicroErosionFactor.value.floatValue = 0.65f;
-                        m_MicroErosionScale.value.floatValue = 300.0f;
-                    }
-                    else
-                    {
-                        m_ShapeFactor.value.floatValue = 0.95f;
-                        m_ShapeScale.value.floatValue = 5.0f;
-                        m_ErosionFactor.value.floatValue = 0.8f;
-                        m_ErosionScale.value.floatValue = 107.0f;
-                    }
-
-                    // Curves
-                    m_DensityCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.05f, 1.0f), new Keyframe(0.75f, 1.0f), new Keyframe(1.0f, 0.0f));
-                    m_ErosionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(0.1f, 0.9f), new Keyframe(1.0f, 1.0f));
-                    m_AmbientOcclusionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.25f, 0.5f), new Keyframe(1.0f, 0.0f));
-
-                    // Layer properties
-                    m_BottomAltitude.value.floatValue = 3000.0f;
-                    m_AltitudeRange.value.floatValue = 1000.0f;
+                    m_ShapeFactor.value.floatValue = 0.925f;
+                    m_ShapeScale.value.floatValue = 5.0f;
+                    m_ErosionFactor.value.floatValue = 0.85f;
+                    m_ErosionScale.value.floatValue = 75.0f;
+                    m_MicroErosionFactor.value.floatValue = 0.65f;
+                    m_MicroErosionScale.value.floatValue = 300.0f;
                 }
-                break;
-                case VolumetricClouds.CloudPresets.Cloudy:
+                else
                 {
-                    m_DensityMultiplier.value.floatValue = 0.4f;
-
-                    if (microDetails)
-                    {
-                        m_ShapeFactor.value.floatValue = 0.875f;
-                        m_ShapeScale.value.floatValue = 5.0f;
-                        m_ErosionFactor.value.floatValue = 0.9f;
-                        m_ErosionScale.value.floatValue = 75.0f;
-                        m_MicroErosionFactor.value.floatValue = 0.65f;
-                        m_MicroErosionScale.value.floatValue = 300.0f;
-                    }
-                    else
-                    {
-                        m_ShapeFactor.value.floatValue = 0.9f;
-                        m_ShapeScale.value.floatValue = 5.0f;
-                        m_ErosionFactor.value.floatValue = 0.8f;
-                        m_ErosionScale.value.floatValue = 107.0f;
-                    }
-
-                    // Curves
-                    m_DensityCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.15f, 1.0f), new Keyframe(1.0f, 0.1f));
-                    m_ErosionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(0.1f, 0.9f), new Keyframe(1.0f, 1.0f));
-                    m_AmbientOcclusionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.25f, 0.4f), new Keyframe(1.0f, 0.0f));
-
-                    // Layer properties
-                    m_BottomAltitude.value.floatValue = 1200.0f;
-                    m_AltitudeRange.value.floatValue = 2000.0f;
+                    m_ShapeFactor.value.floatValue = 0.95f;
+                    m_ShapeScale.value.floatValue = 5.0f;
+                    m_ErosionFactor.value.floatValue = 0.8f;
+                    m_ErosionScale.value.floatValue = 107.0f;
                 }
-                break;
-                case VolumetricClouds.CloudPresets.Overcast:
-                {
-                    m_DensityMultiplier.value.floatValue = 0.3f;
 
-                    if (microDetails)
-                    {
-                        m_ShapeFactor.value.floatValue = 0.45f;
-                        m_ShapeScale.value.floatValue = 5.0f;
-                        m_ErosionFactor.value.floatValue = 0.7f;
-                        m_ErosionScale.value.floatValue = 75.0f;
-                        m_MicroErosionFactor.value.floatValue = 0.5f;
-                        m_MicroErosionScale.value.floatValue = 300.0f;
-                    }
-                    else
-                    {
-                        m_ShapeFactor.value.floatValue = 0.5f;
-                        m_ShapeScale.value.floatValue = 5.0f;
-                        m_ErosionFactor.value.floatValue = 0.5f;
-                        m_ErosionScale.value.floatValue = 107.0f;
-                    }
+                // Curves
+                m_DensityCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.05f, 1.0f), new Keyframe(0.75f, 1.0f), new Keyframe(1.0f, 0.0f));
+                m_ErosionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(0.1f, 0.9f), new Keyframe(1.0f, 1.0f));
+                m_AmbientOcclusionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.25f, 0.5f), new Keyframe(1.0f, 0.0f));
 
-                    // Curves
-                    m_DensityCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.05f, 1.0f), new Keyframe(0.9f, 0.0f), new Keyframe(1.0f, 0.0f));
-                    m_ErosionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(0.1f, 0.9f), new Keyframe(1.0f, 1.0f));
-                    m_AmbientOcclusionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(1.0f, 0.0f));
-
-                    // Layer properties
-                    m_BottomAltitude.value.floatValue = 1500.0f;
-                    m_AltitudeRange.value.floatValue = 2500.0f;
-                }
-                break;
-                case VolumetricClouds.CloudPresets.Stormy:
-                {
-                    m_DensityMultiplier.value.floatValue = 0.35f;
-
-                    if (microDetails)
-                    {
-                        m_ShapeFactor.value.floatValue = 0.825f;
-                        m_ShapeScale.value.floatValue = 5.0f;
-                        m_ErosionFactor.value.floatValue = 0.9f;
-                        m_ErosionScale.value.floatValue = 75.0f;
-                        m_MicroErosionFactor.value.floatValue = 0.6f;
-                        m_MicroErosionScale.value.floatValue = 300.0f;
-                    }
-                    else
-                    {
-                        m_ShapeFactor.value.floatValue = 0.85f;
-                        m_ShapeScale.value.floatValue = 5.0f;
-                        m_ErosionFactor.value.floatValue = 0.75f;
-                        m_ErosionScale.value.floatValue = 107.0f;
-                    }
-
-                    // Curves
-                    m_DensityCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.037f, 1.0f), new Keyframe(0.6f, 1.0f), new Keyframe(1.0f, 0.0f));
-                    m_ErosionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(0.05f, 0.8f), new Keyframe(0.2438f, 0.9498f), new Keyframe(0.5f, 1.0f), new Keyframe(0.93f, 0.9268f), new Keyframe(1.0f, 1.0f));
-                    m_AmbientOcclusionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.1f, 0.4f), new Keyframe(1.0f, 0.0f));
-
-                    // Layer properties
-                    m_BottomAltitude.value.floatValue = 1000.0f;
-                    m_AltitudeRange.value.floatValue = 5000.0f;
-                }
-                break;
-                default:
-                    break;
+                // Layer properties
+                m_BottomAltitude.value.floatValue = 3000.0f;
+                m_AltitudeRange.value.floatValue = 1000.0f;
             }
+            break;
+            case VolumetricClouds.CloudPresets.Cloudy:
+            {
+                m_DensityMultiplier.value.floatValue = 0.4f;
+
+                if (microDetails)
+                {
+                    m_ShapeFactor.value.floatValue = 0.875f;
+                    m_ShapeScale.value.floatValue = 5.0f;
+                    m_ErosionFactor.value.floatValue = 0.9f;
+                    m_ErosionScale.value.floatValue = 75.0f;
+                    m_MicroErosionFactor.value.floatValue = 0.65f;
+                    m_MicroErosionScale.value.floatValue = 300.0f;
+                }
+                else
+                {
+                    m_ShapeFactor.value.floatValue = 0.9f;
+                    m_ShapeScale.value.floatValue = 5.0f;
+                    m_ErosionFactor.value.floatValue = 0.8f;
+                    m_ErosionScale.value.floatValue = 107.0f;
+                }
+
+                // Curves
+                m_DensityCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.15f, 1.0f), new Keyframe(1.0f, 0.1f));
+                m_ErosionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(0.1f, 0.9f), new Keyframe(1.0f, 1.0f));
+                m_AmbientOcclusionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.25f, 0.4f), new Keyframe(1.0f, 0.0f));
+
+                // Layer properties
+                m_BottomAltitude.value.floatValue = 1200.0f;
+                m_AltitudeRange.value.floatValue = 2000.0f;
+            }
+            break;
+            case VolumetricClouds.CloudPresets.Overcast:
+            {
+                m_DensityMultiplier.value.floatValue = 0.3f;
+
+                if (microDetails)
+                {
+                    m_ShapeFactor.value.floatValue = 0.45f;
+                    m_ShapeScale.value.floatValue = 5.0f;
+                    m_ErosionFactor.value.floatValue = 0.7f;
+                    m_ErosionScale.value.floatValue = 75.0f;
+                    m_MicroErosionFactor.value.floatValue = 0.5f;
+                    m_MicroErosionScale.value.floatValue = 300.0f;
+                }
+                else
+                {
+                    m_ShapeFactor.value.floatValue = 0.5f;
+                    m_ShapeScale.value.floatValue = 5.0f;
+                    m_ErosionFactor.value.floatValue = 0.5f;
+                    m_ErosionScale.value.floatValue = 107.0f;
+                }
+
+                // Curves
+                m_DensityCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.05f, 1.0f), new Keyframe(0.9f, 0.0f), new Keyframe(1.0f, 0.0f));
+                m_ErosionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(0.1f, 0.9f), new Keyframe(1.0f, 1.0f));
+                m_AmbientOcclusionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(1.0f, 0.0f));
+
+                // Layer properties
+                m_BottomAltitude.value.floatValue = 1500.0f;
+                m_AltitudeRange.value.floatValue = 2500.0f;
+            }
+            break;
+            case VolumetricClouds.CloudPresets.Stormy:
+            {
+                m_DensityMultiplier.value.floatValue = 0.35f;
+
+                if (microDetails)
+                {
+                    m_ShapeFactor.value.floatValue = 0.825f;
+                    m_ShapeScale.value.floatValue = 5.0f;
+                    m_ErosionFactor.value.floatValue = 0.9f;
+                    m_ErosionScale.value.floatValue = 75.0f;
+                    m_MicroErosionFactor.value.floatValue = 0.6f;
+                    m_MicroErosionScale.value.floatValue = 300.0f;
+                }
+                else
+                {
+                    m_ShapeFactor.value.floatValue = 0.85f;
+                    m_ShapeScale.value.floatValue = 5.0f;
+                    m_ErosionFactor.value.floatValue = 0.75f;
+                    m_ErosionScale.value.floatValue = 107.0f;
+                }
+
+                // Curves
+                m_DensityCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.037f, 1.0f), new Keyframe(0.6f, 1.0f), new Keyframe(1.0f, 0.0f));
+                m_ErosionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(0.05f, 0.8f), new Keyframe(0.2438f, 0.9498f), new Keyframe(0.5f, 1.0f), new Keyframe(0.93f, 0.9268f), new Keyframe(1.0f, 1.0f));
+                m_AmbientOcclusionCurve.value.animationCurveValue = new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.1f, 0.4f), new Keyframe(1.0f, 0.0f));
+
+                // Layer properties
+                m_BottomAltitude.value.floatValue = 1000.0f;
+                m_AltitudeRange.value.floatValue = 5000.0f;
+            }
+            break;
+            default:
+                break;
         }
+    }
 
     void SimpleControlMode(bool controlChanged)
     {
@@ -597,10 +597,10 @@ class VolumetricCloudsEditor : VolumeComponentEditor
 
             if (asset == null)
                 return null;
- 
+
             if (RenderDataListFieldInfo == null)
                 return null;
- 
+
             var renderDataList = (ScriptableRendererData[])RenderDataListFieldInfo.GetValue(asset);
             return renderDataList;
         }

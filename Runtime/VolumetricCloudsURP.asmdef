@@ -14,5 +14,12 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.jiaozi158.unity-physically-based-sky-urp",
+            "expression": "1.0.0",
+            "define": "URP_PBSKY"
+        }
+    ],
     "noEngineReferences": false
 }

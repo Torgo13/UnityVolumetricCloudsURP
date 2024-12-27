@@ -154,7 +154,7 @@ public class VolumetricClouds : VolumeComponent, IPostProcessComponent
     [AdditionalProperty]
     [Tooltip("Controls the intensity of the wind-based altitude distortion of the clouds.")]
     public ClampedFloatParameter altitudeDistortion = new(0.25f, -1.0f, 1.0f);
-    
+
     /// <summary>
     /// Controls the vertical wind speed of the larger cloud shapes.
     /// </summary>
