@@ -696,7 +696,6 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             }
             else
             {
-                const
                 float step = 1.0f / (customLutMapResolution - 1f);
 
                 for (int i = 0; i < customLutMapResolution; i++)
@@ -768,7 +767,6 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         {
             float radialDistance = length(originPS);
             float rcpRadialDistance = rcp(radialDistance);
-            const
             float cosChi = 1.0f;
             Vector2 tInner = IntersectSphere(lowerBoundPS, cosChi, radialDistance, rcpRadialDistance);
             Vector2 tOuter = IntersectSphere(higherBoundPS, -cosChi, radialDistance, rcpRadialDistance);

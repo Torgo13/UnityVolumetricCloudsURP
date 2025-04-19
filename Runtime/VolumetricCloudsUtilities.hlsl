@@ -174,10 +174,16 @@ float2 IntersectSphere(float sphereRadius, float cosChi,
                                                   -cosChi + sqrt(d)));
 }
 
-float ComputeCosineOfHorizonAngle(float rcpR)
+// TODO: remove.
+float2 IntersectSphere(float sphereRadius, float cosChi, float radialDistance)
+{
+    return IntersectSphere(sphereRadius, cosChi, radialDistance, rcp(radialDistance));
+}
+
+float ComputeCosineOfHorizonAngle(float r)
 {
     float R = _EarthRadius;
-    float sinHor = R * rcpR;
+    float sinHor = R * rcp(r);
     return -sqrt(saturate(1 - sinHor * sinHor));
 }
 
@@ -223,12 +229,11 @@ bool ExitCloudVolume(float3 originPS, half3 dir, float higherBoundPS, out float 
 {
     // Given that we are inside the volume, we are guaranteed to exit at the outer bound
     float radialDistance = length(originPS);
-    float rcpRadialDistance = rcp(radialDistance);
-    float cosChi = dot(originPS, dir) * rcpRadialDistance;
-    tExit = IntersectSphere(higherBoundPS, cosChi, radialDistance, rcpRadialDistance).y;
+    float cosChi = dot(originPS, dir) * rcp(radialDistance);
+    tExit = IntersectSphere(higherBoundPS, cosChi, radialDistance, rcp(radialDistance)).y;
 
     // If the ray intersects the earth, then the sun is occluded by the earth
-    return cosChi >= ComputeCosineOfHorizonAngle(rcpRadialDistance);
+    return cosChi >= ComputeCosineOfHorizonAngle(radialDistance);
 }
 
 struct RayMarchRange
@@ -256,7 +261,7 @@ bool IntersectCloudVolume(float3 originPS, half3 dir, float lowerBoundPS, float 
         tEntry = tInner.y;
         tExit = tOuter.y;
         // We don't see the clouds if they are behind Earth
-        intersect = cosChi >= ComputeCosineOfHorizonAngle(rcpRadialDistance);
+        intersect = cosChi >= ComputeCosineOfHorizonAngle(radialDistance);
     }
     else // Inside or above the cloud volume
     {
@@ -630,12 +635,11 @@ float3 ComputeAtmosphericOpticalDepth(float r, float cosTheta, bool aboveHorizon
 half3 EvaluateSunColorAttenuation(float3 positionPS, half3 sunDirection, bool estimatePenumbra = false)
 {
     float r = length(positionPS);
-    float rcpR = rcp(r);
-    float cosTheta = dot(positionPS, sunDirection) * rcpR; // Normalize
+    float cosTheta = dot(positionPS, sunDirection) * rcp(r); // Normalize
 
     // Point can be below horizon due to precision issues
     r = max(r, _PlanetaryRadius);
-    float cosHoriz = ComputeCosineOfHorizonAngle(rcpR);
+    float cosHoriz = ComputeCosineOfHorizonAngle(r);
 
     if (cosTheta >= cosHoriz) // Above horizon
     {
