@@ -487,7 +487,20 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
         private static readonly Vector4 m_ScaleBias = new Vector4(1.0f, 1.0f, 0.0f, 0.0f);
 
+#if OPTIMISATION
+        private static readonly System.Linq.Expressions.ParameterExpression param
+            = System.Linq.Expressions.Expression.Parameter(typeof(object), "instance");
+
+        private static readonly Func<object, RTHandle> depthTextureDelegate
+            = System.Linq.Expressions.Expression.Lambda<Func<object, RTHandle>>(
+                System.Linq.Expressions.Expression.Convert(
+                System.Linq.Expressions.Expression.Field(
+                System.Linq.Expressions.Expression.Convert(param, typeof(UniversalRenderer)),
+                typeof(UniversalRenderer).GetField("m_DepthTexture", BindingFlags.NonPublic | BindingFlags.Instance)),
+                typeof(RTHandle)), param).Compile();
+#else
         private readonly static FieldInfo depthTextureFieldInfo = typeof(UniversalRenderer).GetField("m_DepthTexture", BindingFlags.NonPublic | BindingFlags.Instance);
+#endif // OPTIMISATION
 
         private Texture2D customLutPresetMap;
         private readonly Color[] customLutColorArray = new Color[customLutMapResolution];
@@ -507,7 +520,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
         private void UpdateMaterialProperties(Camera camera)
         {
-        #if URP_PBSKY
+#if URP_PBSKY
             bool isVolumeActive = visualEnvVolume != null && visualEnvVolume.IsActive() && visualEnvVolume.skyType.value != 0;
             if (isVolumeActive)
             {
@@ -519,10 +532,10 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 if (cloudsVolume.localClouds.value) { cloudsMaterial.EnableKeyword(localClouds); }
                 else { cloudsMaterial.DisableKeyword(localClouds); }
             }
-        #else
+#else
             if (cloudsVolume.localClouds.value) { cloudsMaterial.EnableKeyword(localClouds); }
             else { cloudsMaterial.DisableKeyword(localClouds); }
-        #endif
+#endif
 
             if (cloudsVolume.microErosion.value && cloudsVolume.microErosionFactor.value > 0.0f) { cloudsMaterial.EnableKeyword(microErosion); }
             else { cloudsMaterial.DisableKeyword(microErosion); }
@@ -546,17 +559,17 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             cloudsMaterial.SetFloat(numLightSteps, cloudsVolume.numLightSteps.value);
             cloudsMaterial.SetFloat(maxStepSize, cloudsVolume.altitudeRange.value / 8.0f);
 
-        #if URP_PBSKY
+#if URP_PBSKY
             float4 planetCenterRad = visualEnvVolume.GetPlanetCenterRadius(camera.transform.position);
             float actualEarthRad = isVolumeActive ? planetCenterRad.w : Mathf.Lerp(1.0f, 0.025f, cloudsVolume.earthCurvature.value) * earthRad;
             planetCenterRad = visualEnvVolume.renderingSpace.value == VisualEnvironment.RenderingSpace.World ? planetCenterRad : float4(0.0f, -actualEarthRad, 0.0f, actualEarthRad);
 
             cloudsMaterial.SetVector(planetCenterRadius, planetCenterRad);
-        #else
+#else
             float actualEarthRad = Mathf.Lerp(1.0f, 0.025f, cloudsVolume.earthCurvature.value) * earthRad;
 
             cloudsMaterial.SetVector(planetCenterRadius, float4(0.0f, -actualEarthRad, 0.0f, actualEarthRad));
-        #endif
+#endif
 
             float bottomAltitude = cloudsVolume.bottomAltitude.value + actualEarthRad;
             float highestAltitude = bottomAltitude + cloudsVolume.altitudeRange.value;
@@ -659,13 +672,13 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 if (mainLight != null)
                     mainLightColor = (isLinearColorSpace ? mainLight.color.linear : mainLight.color.gamma) * (mainLight.useColorTemperature ? Mathf.CorrelatedColorTemperatureToRGB(mainLight.colorTemperature) : Color.white) * mainLight.intensity;
 
-            #if URP_PHYSICAL_LIGHT
+#if URP_PHYSICAL_LIGHT
                 bool isPhysicalLight = mainLight.GetComponent<AdditionalLightData>() != null;
 
                 mainLightColor = isPhysicalLight ? mainLightColor : mainLightColor * PI;
-            #else
+#else
                 mainLightColor *= PI;
-            #endif
+#endif
 
                 // Pass the actual main light color to volumetric clouds shader.
                 cloudsMaterial.SetVector(sunColor, mainLightColor);
@@ -908,7 +921,11 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 {
                     // Using reflection to access the "_CameraDepthTexture" in compatibility mode
                     var renderer = renderingData.cameraData.renderer as UniversalRenderer;
+#if OPTIMISATION
+                    var cameraDepthHandle = depthTextureDelegate(renderer);
+#else
                     var cameraDepthHandle = depthTextureFieldInfo.GetValue(renderer) as RTHandle;
+#endif // OPTIMISATION
 
                     Blitter.BlitCameraTexture(cmd, cameraDepthHandle, cameraTempDepthHandle);
 
@@ -1490,9 +1507,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         private readonly ProfilingSampler m_ProfilingSampler = new ProfilingSampler(profilerTag);
 
         public VolumetricClouds cloudsVolume;
-    #if URP_PBSKY
+#if URP_PBSKY
         public VisualEnvironment visualEnvVolume;
-    #endif
+#endif
         private readonly Material cloudsMaterial;
 
         private RTHandle shadowTextureHandle;
@@ -1648,16 +1665,16 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 float3 c1 = lsToWSMat.MultiplyPoint(lightSpaceBounds.center + new Vector3(lightSpaceBounds.extents.x, -lightSpaceBounds.extents.y, lightSpaceBounds.extents.z));
                 float3 c2 = lsToWSMat.MultiplyPoint(lightSpaceBounds.center + new Vector3(-lightSpaceBounds.extents.x, lightSpaceBounds.extents.y, lightSpaceBounds.extents.z));
 
-            #if URP_PBSKY
+#if URP_PBSKY
                 bool isVolumeActive = visualEnvVolume != null && visualEnvVolume.IsActive();
 
                 float4 planetCenterRad = visualEnvVolume.GetPlanetCenterRadius(camera.transform.position);
                 float actualEarthRad = isVolumeActive ? planetCenterRad.w : Mathf.Lerp(1.0f, 0.025f, cloudsVolume.earthCurvature.value) * VolumetricCloudsPass.earthRad;
                 float3 planetCenterPos = isVolumeActive ? planetCenterRad.xyz : float3(0.0f, -actualEarthRad, 0.0f);
-            #else
+#else
                 float actualEarthRad = Mathf.Lerp(1.0f, 0.025f, cloudsVolume.earthCurvature.value) * VolumetricCloudsPass.earthRad;
                 float3 planetCenterPos = float3(0.0f, -actualEarthRad, 0.0f);
-            #endif
+#endif
 
                 float3 dirX = c1 - c0;
                 float3 dirY = c2 - c0;
@@ -1842,16 +1859,16 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 float3 c1 = lsToWSMat.MultiplyPoint(lightSpaceBounds.center + new Vector3(lightSpaceBounds.extents.x, -lightSpaceBounds.extents.y, lightSpaceBounds.extents.z));
                 float3 c2 = lsToWSMat.MultiplyPoint(lightSpaceBounds.center + new Vector3(-lightSpaceBounds.extents.x, lightSpaceBounds.extents.y, lightSpaceBounds.extents.z));
 
-            #if URP_PBSKY
+#if URP_PBSKY
                 bool isVolumeActive = visualEnvVolume != null && visualEnvVolume.IsActive();
 
                 float4 planetCenterRad = visualEnvVolume.GetPlanetCenterRadius(camera.transform.position);
                 float actualEarthRad = isVolumeActive ? planetCenterRad.w : Mathf.Lerp(1.0f, 0.025f, cloudsVolume.earthCurvature.value) * VolumetricCloudsPass.earthRad;
                 float3 planetCenterPos = isVolumeActive ? planetCenterRad.xyz : float3(0.0f, -actualEarthRad, 0.0f);
-            #else
+#else
                 float actualEarthRad = Mathf.Lerp(1.0f, 0.025f, cloudsVolume.earthCurvature.value) * VolumetricCloudsPass.earthRad;
                 float3 planetCenterPos = float3(0.0f, -actualEarthRad, 0.0f);
-            #endif
+#endif
 
                 float3 dirX = c1 - c0;
                 float3 dirY = c2 - c0;

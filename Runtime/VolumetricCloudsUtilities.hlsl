@@ -28,7 +28,7 @@ half3 EvaluateVolumetricCloudsAmbientProbe(half3 normalWS)
 #define CLOUD_LUT_MIP_OFFSET 1.0
 // Size of Preset LUT (unused since it's not a compute shader)
 #define CLOUD_MAP_LUT_PRESET_SIZE 64.0
-// Density below wich we consider the density is zero (optimization reasons)
+// Density below which we consider the density is zero (optimization reasons)
 #define CLOUD_DENSITY_TRESHOLD 0.001
 // Number of steps before we start the large steps
 #define EMPTY_STEPS_BEFORE_LARGE_STEPS 8
@@ -41,7 +41,7 @@ half3 EvaluateVolumetricCloudsAmbientProbe(half3 normalWS)
 #define MAX_EROSION_DISTANCE 100000.0
 // Value that is used to normalize the noise textures
 #define NOISE_TEXTURE_NORMALIZATION_FACTOR 100000.0
-// Maximal distance until which the "skybox"
+// Maximal distance until the "skybox"
 #define MAX_SKYBOX_VOLUMETRIC_CLOUDS_DISTANCE 200000.0 //FLT_MAX
 // Maximal size of a light step
 #define LIGHT_STEP_MAXIMAL_SIZE 1000.0
@@ -66,9 +66,9 @@ struct CloudRay
 // Structure that holds the result of our volumetric ray
 struct VolumetricRayResult
 {
-    // Amount of lighting that reach the clouds
+    // Amount of lighting that reaches the clouds
     // We keep track of sun light and ambient light separately for optimization
-    // They are combine at the end of tracing
+    // They are combined at the end of tracing
     half3 scattering;
     half ambient;
     // Transmittance through the clouds
