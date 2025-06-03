@@ -78,95 +78,14 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
             // Initialize the values for the optimized ray marching
             bool activeSampling = true;
             int sequentialEmptySamples = 0;
-            
-            int snapshotSize = _BaseMap_TexelSize.z; //4096; //rcp(_SnapshotData.z);
 
             // Do the ray march for every step that we can.
             while (currentIndex < (int)_NumPrimarySteps && currentDistance < totalDistance)
             {
-                // Convert to planet space
-                float3 positionPS = ConvertToPS(currentPositionWS);
-
-                // Only check for terrain below the maximum terrain height
-                if (_TerrainData.z > half(0.0) && currentPositionWS.y < _TerrainData.y) // TODO replace _TerrainData.z > half(0.0) with multi_compile_local_fragment
-                {
-                    //activeSampling = true;
-
-                    // Search 1x1 mip first
-                    int mipOffset = 12; // TODO Avoid hardcoding
-                    int snapshotMipSize = snapshotSize;
-
-                    half4 terrainProperties;
-
-                    // Check if the ray intersects with the highest point of each mip level
-                    while (mipOffset > 0)
-                    {
-                        EvaluateTerrainProperties(positionPS, mipOffset, terrainProperties);
-                        if (currentPositionWS.y > terrainProperties.w)
-                        {
-                            break;
-                        }
-
-                        snapshotMipSize >>= 1;
-                        --mipOffset;
-                    }
-                    
-                    // Evaluate the full resolution terrain texture
-                    EvaluateTerrainProperties(positionPS, mipOffset, terrainProperties);
-                    if (currentPositionWS.y < terrainProperties.w)
-                    {
-                        // Refine hit position using binary search
-                        float3 wpos;
-                        float relativeRayDistance = currentDistance / 512.0;
-                        float t1 = currentDistance; // Current distance
-                        float t0 = currentDistance - stepS; // Previous distance
-                        half ao = half(1.0);
-                        for (int i = 0; i < _TerrainData.w; i++) {
-                            currentDistance = (t1 + t0) * 0.5; // Midpoint between previous and current distance
-                            currentPositionWS = ray.originWS + (rayMarchRange.start + currentDistance) * ray.direction;
-                            wpos = floor(currentPositionWS) + 0.5;
-                            EvaluateTerrainProperties(ConvertToPS(wpos), mipOffset, terrainProperties);
-                            if (wpos.y < terrainProperties.w) {
-                                t1 = currentDistance;
-                                relativeRayDistance = currentDistance / 512.0;
-                                ao = saturate(0.25 + frac(currentPositionWS.y) * 0.75 + relativeRayDistance);
-                            } else {
-                                t0 = currentDistance;
-                            }
-                        }
-                        
-                        half atten = half(1.0);
-
-                        //if (_ShadowIntensity > half(0.0))
-                        {
-                            half4 terrainShadowProperties;
-                            const half incr = half(1.015);
-                            for (float j = 2.0; j < _TerrainData.y; j = j * incr + incr) {
-                                float3 rpos = currentPositionWS + _MainLightPosition.xyz * j;
-                                if (rpos.y > _TerrainData.y) {
-                                    break; // Above terrain max altitude so in direct light
-                                }
-                    
-                                EvaluateTerrainProperties(ConvertToPS(rpos), mipOffset, terrainShadowProperties);
-                                if (rpos.y < terrainShadowProperties.w) {
-                                    atten = _ShadowIntensity;
-                                    break;
-                                }
-                            }
-                        }
-
-                        rayHit.meanDistance = currentDistance;
-                        meanDistanceDivider = 1.0;
-                        
-                        // Evaluate the terrain at the position
-                        atten = saturate(saturate(atten + _MainLightPosition.y * _VPDaylightShadowAtten) + _VPAmbientLight);
-                        EvaluateTerrain(terrainProperties, ray.direction, currentPositionWS, rayMarchStartPS, rayMarchEndPS, saturate(ao * atten), stepS, relativeRayDistance, rayHit);
-                        break;
-                    }
-                }
-
                 // Compute the camera-distance based attenuation
                 float densityAttenuationValue = DensityFadeValue(rayMarchRange.start + currentDistance);
+                // Compute the mip offset for the erosion texture
+                float erosionMipOffset = ErosionMipOffset(rayMarchRange.start + currentDistance);
 
                 // Accumulate in WS and convert at each iteration to avoid precision issues
                 float3 currentPositionPS = ConvertToPS(currentPositionWS);
@@ -174,9 +93,6 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
                 // Should we be evaluating the clouds or just doing the large ray marching
                 if (activeSampling)
                 {
-                    // Compute the mip offset for the erosion texture
-                    float erosionMipOffset = ErosionMipOffset(rayMarchRange.start + currentDistance);
-
                     // If the density is null, we can skip as there will be no contribution
                     CloudProperties properties;
                     EvaluateCloudProperties(currentPositionPS, 0.0, erosionMipOffset, false, false, properties);
@@ -215,6 +131,7 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
                     float relativeStepSize = lerp(cloudRay.integrationNoise, 1.0, saturate(currentIndex));
                     currentPositionWS += cloudRay.direction * stepS * relativeStepSize;
                     currentDistance += stepS * relativeStepSize;
+
                 }
                 else
                 {
@@ -230,7 +147,7 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
                         currentPositionWS += cloudRay.direction * stepS * 2.0;
                         currentDistance += stepS * 2.0;
                     }
-                    else 
+                    else
                     {
                         // Somewhere between this step and the previous clouds started
                         // We reset all the counters and enable active sampling
@@ -241,12 +158,11 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
                         sequentialEmptySamples = 0;
                     }
                 }
-
                 currentIndex++;
             }
 
             // Normalized the depth we computed
-            if (rayHit.meanDistance > 0.0)
+            if (volumetricRay.meanDistance != 0.0)
             {
                 volumetricRay.invalidRay = false;
                 volumetricRay.meanDistance /= meanDistanceDivider;

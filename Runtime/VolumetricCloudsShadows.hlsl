@@ -32,10 +32,8 @@ half3 TraceVolumetricCloudsShadows(Varyings input) : SV_Target
 
     // Compute the attenuation
     half transmittance = 1.0;
-    /*
     float closestDistance = FLT_MAX;
     float farthestDistance = FLT_MIN;
-    */
     bool validShadow = false;
 
     // Intersect the outer sphere
@@ -55,9 +53,7 @@ half3 TraceVolumetricCloudsShadows(Varyings input) : SV_Target
         for (int i = 1; i < 16; ++i)
         {
             // Compute the sphere intersection position
-            float dist = (startDistance + stepSize * i);
-
-            // TODO Add terrain to shadows
+            float dist = (stepSize * i);
             float3 positionPS = rayOriginPS + rayDirection * dist;
 
             // Get the coverage at intersection point
@@ -74,18 +70,15 @@ half3 TraceVolumetricCloudsShadows(Varyings input) : SV_Target
             if (cloudProperties.density > CLOUD_DENSITY_TRESHOLD)
             {
                 // Apply the extinction
-                /*
                 closestDistance = min(closestDistance, totalDistance - stepSize * (i + 1));
                 farthestDistance = max(farthestDistance, totalDistance - stepSize * i);
-                */
                 const half3 currentStepExtinction = exp(-_ScatteringTint.xyz * cloudProperties.density * cloudProperties.sigmaT * stepSize);
                 transmittance *= Luminance(currentStepExtinction);
                 validShadow = true;
             }
         }
-    }   
-    
-    // If we didn't manage to hit a non-null density, we need to fix the distances    
+    }
+    // If we didn't manage to hit a non null density, we need to fix the distances
     //half4 result = validShadow ? half4(1.0 / closestDistance, lerp(1.0 - _ShadowIntensity, 1.0, transmittance), 1.0 / farthestDistance, 1.0) : half4(0.0, 1.0, 0.0, 0.0);
     
     //half shadows = lerp(1.0 - _ShadowIntensity, 1.0, transmittance);
