@@ -55,7 +55,9 @@ half3 TraceVolumetricCloudsShadows(Varyings input) : SV_Target
         for (int i = 1; i < 16; ++i)
         {
             // Compute the sphere intersection position
-            float dist = (stepSize * i);
+            float dist = (startDistance + stepSize * i);
+
+            // TODO Add terrain to shadows
             float3 positionPS = rayOriginPS + rayDirection * dist;
 
             // Get the coverage at intersection point

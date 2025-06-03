@@ -36,6 +36,9 @@ float _EarthRadius;
 half _AccumulationFactor;
 half _NormalizationFactor;
 half _CloudNearPlane;
+float4 _BaseMap_TexelSize;  // x: 1/width,              y: 1/height,                z: width,           w: height
+float4 _SnapshotData;       // x: boundsMin.x,          y: boundsMin.z,             z: 1/TEXTURE_SIZE,  w: FogFactor
+half4 _TerrainData;         // x: _TerrainMinDistance,  y: _TerrainMaxAltitude,     z: _FadeIn,         w: _Quality
 CBUFFER_END
 
 // Ambient Probe (unity_SH)

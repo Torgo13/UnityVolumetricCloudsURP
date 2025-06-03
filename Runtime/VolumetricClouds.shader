@@ -2,7 +2,7 @@ Shader "Hidden/Sky/VolumetricClouds"
 {
     Properties
     {
-        [HideInInspector][NoScaleOffset] _CloudLutTexture("Cloud LUT Texture", 2D) = "white" {}
+        //[HideInInspector][NoScaleOffset] _CloudLutTexture("Cloud LUT Texture", 2D) = "white" {}
         [HideInInspector][NoScaleOffset] _CloudCurveTexture("Cloud LUT Curve Texture", 2D) = "white" {}
         [NoScaleOffset] _ErosionNoise("Erosion Noise Texture", 3D) = "white" {}
         [NoScaleOffset] _Worley128RGBA("Worley Noise Texture", 3D) = "white" {}
@@ -41,6 +41,10 @@ Shader "Hidden/Sky/VolumetricClouds"
         [HideInInspector] _NormalizationFactor("Normalization Factor", Float) = 0.7854
         [HideInInspector] _AccumulationFactor("Accumulation Factor", Float) = 0.95
         [HideInInspector] _CloudNearPlane("Cloud Near Plane", Float) = 0.3
+
+        [MainTexture][NoScaleOffset] _BaseMap("Texture", 2D) = "black" {}
+        _TerrainData("Terrain Data", Vector) = (0.0, 0.0, 0.0, 0.0) // x: _TerrainMinDistance, y: _TerrainMaxAltitude, z: _FadeIn, w: _Quality
+        _SnapshotData("Snapshot Data", Vector) = (0.0, 0.0, 0.0, 0.0) // x: boundsMin.x, y: boundsMin.z, z: 1 / TEXTURE_SIZE (1 / 4096), w: FogFactor
     }
 
     SubShader
@@ -76,7 +80,7 @@ Shader "Hidden/Sky/VolumetricClouds"
 
             #pragma target 3.5
             
-            TEXTURE2D(_CloudLutTexture);
+            //TEXTURE2D(_CloudLutTexture);
             TEXTURE2D(_CloudCurveTexture);
             TEXTURE3D(_Worley128RGBA);
             TEXTURE3D(_ErosionNoise);
@@ -86,6 +90,14 @@ Shader "Hidden/Sky/VolumetricClouds"
             SAMPLER(s_linear_repeat_sampler);
             SAMPLER(s_trilinear_repeat_sampler);
             SAMPLER(sampler_VolumetricCloudsAmbientProbe);
+            
+
+            TEXTURE2D(_BaseMap);
+            SAMPLER(sampler_point_mirror);
+            
+            half _ShadowIntensity;
+            half _VPAmbientLight;
+            half _VPDaylightShadowAtten;
 
             #pragma multi_compile_local_fragment _ _CLOUDS_MICRO_EROSION
             #pragma multi_compile_local_fragment _ _CLOUDS_AMBIENT_PROBE
@@ -414,8 +426,8 @@ Shader "Hidden/Sky/VolumetricClouds"
             #pragma fragment TraceVolumetricCloudsShadows
 
             #pragma target 3.5
-
-            TEXTURE2D(_CloudLutTexture);
+            
+            //TEXTURE2D(_CloudLutTexture);
             TEXTURE2D(_CloudCurveTexture);
             TEXTURE3D(_Worley128RGBA);
             TEXTURE3D(_ErosionNoise);
@@ -429,6 +441,10 @@ Shader "Hidden/Sky/VolumetricClouds"
             float4 _VolumetricCloudsLightingTexture_TexelSize;
 
             SAMPLER(s_linear_clamp_sampler);
+            
+
+            TEXTURE2D(_BaseMap);
+            SAMPLER(sampler_point_mirror);
 
             // URP pre-defined the following variable on 2023.2+.
         #if UNITY_VERSION < 202320
@@ -456,8 +472,8 @@ Shader "Hidden/Sky/VolumetricClouds"
             #pragma fragment FilterVolumetricCloudsShadow
 
             #pragma target 3.5
-
-            TEXTURE2D(_CloudLutTexture);
+            
+            //TEXTURE2D(_CloudLutTexture);
             TEXTURE2D(_CloudCurveTexture);
             TEXTURE3D(_Worley128RGBA);
             TEXTURE3D(_ErosionNoise);
@@ -471,6 +487,10 @@ Shader "Hidden/Sky/VolumetricClouds"
             float4 _VolumetricCloudsLightingTexture_TexelSize;
 
             SAMPLER(s_linear_clamp_sampler);
+            
+
+            TEXTURE2D(_BaseMap);
+            SAMPLER(sampler_point_mirror);
 
             // URP pre-defined the following variable on 2023.2+.
         #if UNITY_VERSION < 202320

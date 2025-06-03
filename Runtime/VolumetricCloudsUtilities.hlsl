@@ -50,8 +50,13 @@ half3 EvaluateVolumetricCloudsAmbientProbe(half3 normalWS)
 #define _PlanetCenterPosition _PlanetCenterRadius.xyz
 #define ConvertToPS(x) (x - _PlanetCenterPosition)
 
-// Structure that holds all the data required for the cloud ray marching
-struct CloudRay
+// Used in perceptual blending, not implemented.
+#if OPTIMISATION
+#else
+#define _ImprovedTransmittanceBlend 1.0
+#endif // OPTIMISATION
+
+struct Ray
 {
     // Origin of the ray in camera-relative space
     float3 originWS;
@@ -267,10 +272,10 @@ bool IntersectCloudVolume(float3 originPS, half3 dir, float lowerBoundPS, float 
     {
         // The ray starts at the intersection with the outer bound, or at 0 if we are inside
         // The ray ends at the lower bound if we hit it, at the outer bound otherwise
-        tEntry = max(tOuter.x, 0.0f);
+        tEntry = max(tOuter.x, 0.0);
         tExit = tInner.x >= 0.0 ? tInner.x : tOuter.y;
         // We don't see the clouds if we don't hit the outer bound
-        intersect = tOuter.y >= 0.0f;
+        intersect = tOuter.y >= 0.0;
     }
 
     return intersect;
@@ -375,6 +380,12 @@ void GetCloudCoverageData(float3 positionPS, out CloudCoverageData data)
     data.maxCloudHeight = cloudMapData.w;
 }
 
+// Function that evaluates the coverage data for a given point in planet space
+void GetTerrainData(float3 positionPS, int mipOffset, out half4 data)
+{
+    data = SAMPLE_TEXTURE2D_LOD(_BaseMap, sampler_point_mirror, (positionPS.xz - _SnapshotData.xy) * _BaseMap_TexelSize.x, mipOffset); // TODO mad instead of adm
+}
+
 // Density remapping function
 half DensityRemap(half x, half a, half b, half c, half d)
 {
@@ -393,7 +404,7 @@ half PowderEffect(half cloudDensity, half cosAngle, half intensity)
 void EvaluateCloudProperties(float3 positionPS, float noiseMipOffset, float erosionMipOffset, bool cheapVersion, bool lightSampling,
                             out CloudProperties properties)
 {
-    // Initliaze all the values to 0 in case
+    // Initialise all the values to 0 in case
     ZERO_INITIALIZE(CloudProperties, properties);
 
 //#ifndef CLOUDS_SIMPLE_PRESET
@@ -405,7 +416,6 @@ void EvaluateCloudProperties(float3 positionPS, float noiseMipOffset, float eros
     if (positionPS.y < _EarthRadius)
         return;
 #endif
-
 
     // By default the ambient occlusion is 1.0
     properties.ambientOcclusion = 1.0;
@@ -497,8 +507,20 @@ void EvaluateCloudProperties(float3 positionPS, float noiseMipOffset, float eros
     properties.density = base_cloud * _DensityMultiplier;
 }
 
-// Function that evaluates the transmittance to the sun at a given cloud position
-half3 EvaluateSunTransmittance(float3 positionPS, half3 sunDirection, PHASE_FUNCTION_STRUCTURE phaseFunction)
+// Function that evaluates the terrain properties at a given absolute world space position
+void EvaluateTerrainProperties(float3 positionPS, int mipOffset, out half4 properties)
+{
+    // When rendering in camera space, we still want horizontal scrolling
+#ifndef _LOCAL_VOLUMETRIC_CLOUDS
+    positionPS.xz += _WorldSpaceCameraPos.xz;
+#endif
+
+    GetTerrainData(positionPS, mipOffset, properties);
+    properties.w *= _TerrainData.y;
+}
+
+// Function that evaluates the luminance at a given cloud position (only the contribution of the sun)
+half3 EvaluateSunLuminance(float3 positionWS, half3 sunDirection, half3 sunColor, half powderEffect, PHASE_FUNCTION_STRUCTURE phaseFunction)
 {
     // Compute the Ray to the limits of the cloud volume in the direction of the light
     float totalLightDistance = 0.0;
@@ -713,6 +735,54 @@ void EvaluateCloud(CloudProperties cloudProperties, half3 rayDirection,
     volumetricRay.scattering += sunLuminance     * (volumetricRay.transmittance - volumetricRay.transmittance * transmittance);
     volumetricRay.ambient    += ambientLuminance * (volumetricRay.transmittance - volumetricRay.transmittance * transmittance);
     volumetricRay.transmittance *= transmittance;
+}
+
+// Evaluates the terrain colour from this position
+void EvaluateTerrain(half4 terrainProperties, half3 rayDirection,
+    float3 currentPositionWS, float3 entryEvaluationPointPS, float3 exitEvaluationPointPS,
+    half atten,
+    float stepSize, float relativeRayDistance, inout RayHit volumetricRay)
+{
+    // TODO Get sun intensity
+    Light sun = GetMainLight();
+
+    // Evaluate the sun color at the position
+/*#if defined(_PHYSICALLY_BASED_SUN)
+    half3 sunColor = EvaluateSunColor(entryEvaluationPointPS, exitEvaluationPointPS, sun.direction, sun.color, relativeRayDistance);
+#else*/
+    half3 sunColor = sun.color;
+//#endif
+
+    volumetricRay.inScattering = terrainProperties.xyz * sunColor;
+
+    float3 wpos = floor(currentPositionWS) + 0.5;
+
+    // compute normal
+    half3 dc = abs(currentPositionWS - wpos);
+    dc.y *= half(1.05); // avoid artifacts at the edges
+    half3 norm = half3(0.0, -rayDirection.y, 0.0);
+    if (dc.z > dc.x && dc.z > dc.y) norm = half3(0.0, 0.0, -sign(rayDirection.z));
+    if (dc.x > dc.z && dc.x > dc.y) norm = half3(-sign(rayDirection.x), 0.0, 0.0);
+
+    // apply shadow attenuation
+    volumetricRay.inScattering *= atten;
+
+    // diffuse lambertian wrap
+    norm = normalize(norm);
+    half ndt = saturate(dot(norm, sun.direction.xyz) * 0.5 + 0.5);
+    volumetricRay.inScattering *= lerp(ndt, 1.0, relativeRayDistance);
+
+    // day/night cycle
+    volumetricRay.inScattering *= saturate(1.0 + sun.direction.y * 2.0);
+
+    // add fog
+    half fogFactor = saturate(_TerrainData.z / relativeRayDistance);
+    half heightFog = currentPositionWS.y / _TerrainData.y;
+    heightFog *= heightFog * fogFactor;
+    half fog = saturate(fogFactor * fogFactor + heightFog);
+
+    volumetricRay.inScattering *= fog * fog;
+    volumetricRay.transmittance = half(1.0) - fog;
 }
 
 #endif
