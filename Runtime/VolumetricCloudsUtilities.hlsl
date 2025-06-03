@@ -6,6 +6,17 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
 
+half3 EvaluateVolumetricCloudsAmbientProbe(half3 normalWS)
+{
+    // Linear + constant polynomial terms
+    half3 res = SHEvalLinearL0L1(normalWS, clouds_SHAr, clouds_SHAg, clouds_SHAb);
+
+    // Quadratic polynomials
+    res += SHEvalLinearL2(normalWS, clouds_SHBr, clouds_SHBg, clouds_SHBb, clouds_SHC);
+
+    return res;
+}
+
 // From HDRP: VolumetricCloudsUtilities.hlsl
 
 // The number of octaves for the multi-scattering
@@ -17,7 +28,7 @@
 #define CLOUD_LUT_MIP_OFFSET 1.0
 // Size of Preset LUT (unused since it's not a compute shader)
 #define CLOUD_MAP_LUT_PRESET_SIZE 64.0
-// Density below wich we consider the density is zero (optimization reasons)
+// Density below which we consider the density is zero (optimization reasons)
 #define CLOUD_DENSITY_TRESHOLD 0.001
 // Number of steps before we start the large steps
 #define EMPTY_STEPS_BEFORE_LARGE_STEPS 8
@@ -30,13 +41,13 @@
 #define MAX_EROSION_DISTANCE 100000.0
 // Value that is used to normalize the noise textures
 #define NOISE_TEXTURE_NORMALIZATION_FACTOR 100000.0
-// Maximal distance until which the "skybox"
-#define MAX_SKYBOX_VOLUMETRIC_CLOUDS_DISTANCE 200000.0
+// Maximal distance until the "skybox"
+#define MAX_SKYBOX_VOLUMETRIC_CLOUDS_DISTANCE 200000.0 //FLT_MAX
 // Maximal size of a light step
 #define LIGHT_STEP_MAXIMAL_SIZE 1000.0
 
 // The planet center position
-#define _PlanetCenterPosition float3(0.0, -_EarthRadius, 0.0)
+#define _PlanetCenterPosition _PlanetCenterRadius.xyz
 #define ConvertToPS(x) (x - _PlanetCenterPosition)
 
 // Used in perceptual blending, not implemented.
@@ -47,7 +58,7 @@
 
 struct Ray
 {
-    // Origin of the ray in world space
+    // Origin of the ray in camera-relative space
     float3 originWS;
     // Direction of the ray in world space
     half3 direction;
@@ -57,10 +68,14 @@ struct Ray
     float integrationNoise;
 };
 
-struct RayHit
+// Structure that holds the result of our volumetric ray
+struct VolumetricRayResult
 {
-    // Amount of lighting that comes from the clouds
-    half3 inScattering;
+    // Amount of lighting that reaches the clouds
+    // We keep track of sun light and ambient light separately for optimization
+    // They are combined at the end of tracing
+    half3 scattering;
+    half ambient;
     // Transmittance through the clouds
     half transmittance;
     // Mean distance of the clouds
@@ -70,24 +85,26 @@ struct RayHit
 };
 
 // Perceptual blending
-half EvaluateFinalTransmittance(half3 color, half transmittance)
+half EvaluateFinalTransmittance(half3 sceneColor, half transmittance)
 {
     // Due to the high intensity of the sun, we often need apply the transmittance in a tonemapped space
     // As we only produce one transmittance, we evaluate the approximation on the luminance of the color
-    half luminance = Luminance(color);
+    half luminance = Luminance(sceneColor * _PostExposure);
 
-    // Apply the tone mapping and then the transmittance
-    half resultLuminance = luminance * rcp((1.0 + luminance) * transmittance);
+    if (luminance > 0.0)
+    {
+        // Apply the transmittance in tonemapped space
+        half resultLuminance = luminance * rcp(1.0 + luminance) * transmittance;
+        resultLuminance = resultLuminance * rcp(1.0 - resultLuminance);
 
-    // reverse the tone mapping
-    resultLuminance = resultLuminance * rcp(1.0 - resultLuminance);
+        // By softening the transmittance attenuation curve for pixels adjacent to cloud boundaries when the luminance is super high,  
+        // We can prevent sun flicker and improve perceptual blending. (https://www.desmos.com/calculator/vmly6erwdo)
+        half finalTransmittance = max(resultLuminance * rcp(luminance), pow(transmittance, 6));
 
-    // This approach only makes sense if the color is not black
-#if OPTIMISATION
-    return luminance > 0.0 ? resultLuminance * rcp(luminance) : transmittance;
-#else
-    return luminance > 0.0 ? lerp(transmittance, resultLuminance * rcp(luminance), _ImprovedTransmittanceBlend) : transmittance;
-#endif // OPTIMISATION
+        // This approach only makes sense if the color is not black
+        transmittance = lerp(transmittance, finalTransmittance, _ImprovedTransmittanceBlend);
+    }
+    return saturate(transmittance);
 }
 
 // These 2 functions were moved to the Core RP package by the commit below:
@@ -162,10 +179,16 @@ float2 IntersectSphere(float sphereRadius, float cosChi,
                                                   -cosChi + sqrt(d)));
 }
 
-float ComputeCosineOfHorizonAngle(float rcpR)
+// TODO: remove.
+float2 IntersectSphere(float sphereRadius, float cosChi, float radialDistance)
+{
+    return IntersectSphere(sphereRadius, cosChi, radialDistance, rcp(radialDistance));
+}
+
+float ComputeCosineOfHorizonAngle(float r)
 {
     float R = _EarthRadius;
-    float sinHor = R * rcpR;
+    float sinHor = R * rcp(r);
     return -sqrt(saturate(1 - sinHor * sinHor));
 }
 
@@ -211,12 +234,11 @@ bool ExitCloudVolume(float3 originPS, half3 dir, float higherBoundPS, out float 
 {
     // Given that we are inside the volume, we are guaranteed to exit at the outer bound
     float radialDistance = length(originPS);
-    float rcpRadialDistance = rcp(radialDistance);
-    float cosChi = dot(originPS, dir) * rcpRadialDistance;
-    tExit = IntersectSphere(higherBoundPS, cosChi, radialDistance, rcpRadialDistance).y;
+    float cosChi = dot(originPS, dir) * rcp(radialDistance);
+    tExit = IntersectSphere(higherBoundPS, cosChi, radialDistance, rcp(radialDistance)).y;
 
     // If the ray intersects the earth, then the sun is occluded by the earth
-    return cosChi >= ComputeCosineOfHorizonAngle(rcpRadialDistance);
+    return cosChi >= ComputeCosineOfHorizonAngle(radialDistance);
 }
 
 struct RayMarchRange
@@ -244,7 +266,7 @@ bool IntersectCloudVolume(float3 originPS, half3 dir, float lowerBoundPS, float 
         tEntry = tInner.y;
         tExit = tOuter.y;
         // We don't see the clouds if they are behind Earth
-        intersect = cosChi >= ComputeCosineOfHorizonAngle(rcpRadialDistance);
+        intersect = cosChi >= ComputeCosineOfHorizonAngle(radialDistance);
     }
     else // Inside or above the cloud volume
     {
@@ -285,17 +307,17 @@ bool GetCloudVolumeIntersection(float3 originWS, half3 dir, out RayMarchRange ra
 struct CloudProperties
 {
     // Normalized float that tells the "amount" of clouds that is at a given location
-    float density;
+    half density;
     // Ambient occlusion for the ambient probe
-    float ambientOcclusion;
+    half ambientOcclusion;
     // Normalized value that tells us the height within the cloud volume (vertically)
     float height;
-    // Transmittance of the cloud
-    float sigmaT;
+    // Extinction over the interval
+    half sigmaT;
 };
 
 // Global attenuation of the density based on the camera distance
-float DensityFadeValue(float distanceToCamera)
+half DensityFadeValue(float distanceToCamera)
 {
     return saturate((distanceToCamera - _FadeInStart) * rcp(_FadeInStart + _FadeInDistance));
 }
@@ -501,26 +523,23 @@ void EvaluateTerrainProperties(float3 positionPS, int mipOffset, out half4 prope
 half3 EvaluateSunLuminance(float3 positionWS, half3 sunDirection, half3 sunColor, half powderEffect, PHASE_FUNCTION_STRUCTURE phaseFunction)
 {
     // Compute the Ray to the limits of the cloud volume in the direction of the light
-    half totalLightDistance = 0.0;
-    half3 luminance = half3(0.0, 0.0, 0.0);
+    float totalLightDistance = 0.0;
+    half3 transmittance = half3(0.0, 0.0, 0.0);
 
     // If we early out, this means we've hit the earth itself
-    if (ExitCloudVolume(ConvertToPS(positionWS), sunDirection, _HighestCloudAltitude, totalLightDistance))
+    if (ExitCloudVolume(positionPS, sunDirection, _HighestCloudAltitude, totalLightDistance))
     {
         // Because of the very limited numebr of light steps and the potential humongous distance to cover, we decide to potnetially cover less and make it more useful
         totalLightDistance = clamp(totalLightDistance, 0, _NumLightSteps * LIGHT_STEP_MAXIMAL_SIZE);
 
         // Apply a small bias to compensate for the imprecision in the ray-sphere intersection at world scale.
-        totalLightDistance += 5.0f;
+        totalLightDistance += 5.0;
 
         // Compute the size of the current step
         float intervalSize = totalLightDistance * rcp((float)_NumLightSteps);
-
-        // Sums the ex
-        half extinctionSum = 0;
+        float opticalDepth = 0;
 
         // Collect total density along light ray.
-        float lastDist = 0;
         for (int j = 0; j < _NumLightSteps; j++)
         {
             // Here we intentionally do not take the right step size for the first step
@@ -528,33 +547,25 @@ half3 EvaluateSunLuminance(float3 positionWS, half3 sunDirection, half3 sunColor
             float dist = intervalSize * (0.25 + j);
 
             // Evaluate the current sample point
-            float3 currentSamplePointWS = positionWS + sunDirection * dist;
+            float3 currentSamplePointPS = positionPS + sunDirection * dist;
             // Get the cloud properties at the sample point
             CloudProperties lightRayCloudProperties;
-            EvaluateCloudProperties(ConvertToPS(currentSamplePointWS), 3.0 * j / _NumLightSteps, 0.0, true, true, lightRayCloudProperties);
+            EvaluateCloudProperties(currentSamplePointPS, 3.0 * j / _NumLightSteps, 0.0, true, true, lightRayCloudProperties);
 
-            // Normally we would evaluate the transmittance at each step and multiply them
-            // but given the fact that exp exp (extinctionA) * exp(extinctionB) = exp(extinctionA + extinctionB)
-            // We can sum the extinctions and do the extinction only once
-            extinctionSum += max(lightRayCloudProperties.density * lightRayCloudProperties.sigmaT, 1e-6);
-
-            // Move on to the next step
-            lastDist = dist;
+            opticalDepth += lightRayCloudProperties.density * lightRayCloudProperties.sigmaT;
         }
 
         // Compute the luminance for each octave
-        half3 sunColorXPowderEffect = sunColor * powderEffect * _SunLightDimmer;
-        half3 extinction = intervalSize * extinctionSum * _ScatteringTint.rgb;
+        // https://magnuswrenninge.com/wp-content/uploads/2010/03/Wrenninge-OzTheGreatAndVolumetric.pdf
+        half3 extinction = intervalSize * opticalDepth * _ScatteringTint.xyz;
         for (int o = 0; o < NUM_MULTI_SCATTERING_OCTAVES; ++o)
         {
             half msFactor = PositivePow(_MultiScattering, o);
-            half3 transmittance = exp(-extinction * msFactor);
-            luminance += transmittance * sunColorXPowderEffect * (phaseFunction[o] * msFactor);
+            transmittance += exp(-extinction * msFactor) * (phaseFunction[o] * msFactor);
         }
     }
 
-    // return the combined luminance
-    return luminance;
+    return transmittance;
 }
 
 float ChapmanUpperApprox(float z, float cosTheta)
@@ -575,13 +586,24 @@ float ChapmanHorizontal(float z)
 }
 
 // Default atmosphere settings of HDRP physically based sky
+#if defined(PHYSICALLY_BASED_SKY)
+half _AirScaleHeight;
+half _AerosolScaleHeight;
+half _AirDensityFalloff;
+half _AerosolDensityFalloff;
+//float _AtmosphericRadius;
+#define _PlanetaryRadius _EarthRadius // TODO: unify earth radius control
+half3 _AirSeaLevelExtinction;
+half _AerosolSeaLevelExtinction;
+#else
 #define _AirScaleHeight 8000.0
 #define _AerosolScaleHeight 1200.0
 #define _AirDensityFalloff 1.0 / _AirScaleHeight
 #define _AerosolDensityFalloff 1.0 / _AerosolScaleHeight
 #define _PlanetaryRadius _EarthRadius
 #define _AirSeaLevelExtinction (half3(5.8, 13.5, 33.1) / 1000000.0)
-#define _AerosolSeaLevelExtinction -0.00001
+#define _AerosolSeaLevelExtinction 0.00001
+#endif
 
 //#define _AlphaSaturation 1.0
 //#define _AlphaMultiplier 1.0
@@ -632,15 +654,14 @@ float3 ComputeAtmosphericOpticalDepth(float r, float cosTheta, bool aboveHorizon
 }
 
 // This function evaluates the sun color attenuation from the physically based sky
-half3 EvaluateSunColorAttenuation(float3 positionPS, float3 sunDirection, bool estimatePenumbra = false)
+half3 EvaluateSunColorAttenuation(float3 positionPS, half3 sunDirection, bool estimatePenumbra = false)
 {
     float r = length(positionPS);
-    float rcpR = rcp(r);
-    float cosTheta = dot(positionPS, sunDirection) * rcpR; // Normalize
+    float cosTheta = dot(positionPS, sunDirection) * rcp(r); // Normalize
 
     // Point can be below horizon due to precision issues
     r = max(r, _PlanetaryRadius);
-    float cosHoriz = ComputeCosineOfHorizonAngle(rcpR);
+    float cosHoriz = ComputeCosineOfHorizonAngle(r);
 
     if (cosTheta >= cosHoriz) // Above horizon
     {
@@ -668,8 +689,8 @@ half3 EvaluateSunColor(float3 entryEvaluationPointPS, float3 exitEvaluationPoint
 
 // Evaluates the inscattering from this position
 void EvaluateCloud(CloudProperties cloudProperties, half3 rayDirection,
-    float3 currentPositionWS, float3 entryEvaluationPointPS, float3 exitEvaluationPointPS, 
-    float stepSize, float relativeRayDistance, inout RayHit volumetricRay)
+                float3 currentPositionPS, float stepSize, float relativeRayDistance,
+                inout VolumetricRayResult volumetricRay)
 {
     // Apply the extinction
     const half extinction = cloudProperties.density * cloudProperties.sigmaT;
@@ -677,16 +698,6 @@ void EvaluateCloud(CloudProperties cloudProperties, half3 rayDirection,
 
     Light sun = GetMainLight();
     half cosAngle = dot(rayDirection, sun.direction);
-
-    // Compute the powder effect
-    half powder_effect = PowderEffect(cloudProperties.density, cosAngle, _PowderEffectIntensity);
-
-    // Evaluate the sun color at the position
-#if defined(_PHYSICALLY_BASED_SUN)
-    half3 sunColor = EvaluateSunColor(entryEvaluationPointPS, exitEvaluationPointPS, sun.direction, sun.color, relativeRayDistance);
-#else
-    half3 sunColor = sun.color;
-#endif
 
     // Evaluate the phase function for each of the octaves
     half2 phaseFunction = half2(0.0, 0.0);
@@ -706,23 +717,23 @@ void EvaluateCloud(CloudProperties cloudProperties, half3 rayDirection,
     phaseFunction[2] = forwardP + backwardsP;
 #endif
 
-    // Evaluate the sun's luminance
-    half3 totalLuminance = EvaluateSunLuminance(currentPositionWS, sun.direction, sunColor, powder_effect, phaseFunction);
+    // Compute the powder effect
+    half powderEffect = PowderEffect(cloudProperties.density, cosAngle, _PowderEffectIntensity);
 
-    // Add the environement lighting contribution
-#ifdef _CLOUDS_AMBIENT_PROBE
-    half3 ambientTermTop = SAMPLE_TEXTURECUBE_LOD(_VolumetricCloudsAmbientProbe, sampler_VolumetricCloudsAmbientProbe, half3(0.0, 1.0, 0.0), 4.0).rgb;
-    half3 ambientTermBottom = SAMPLE_TEXTURECUBE_LOD(_VolumetricCloudsAmbientProbe, sampler_VolumetricCloudsAmbientProbe, half3(0.0, -1.0, 0.0), 4.0).rgb;
-#else
-    half3 ambientTermTop = SAMPLE_TEXTURECUBE_LOD(_GlossyEnvironmentCubeMap, sampler_GlossyEnvironmentCubeMap, half3(0.0, 1.0, 0.0), 5.0).rgb;
-    half3 ambientTermBottom = SAMPLE_TEXTURECUBE_LOD(_GlossyEnvironmentCubeMap, sampler_GlossyEnvironmentCubeMap, half3(0.0, -1.0, 0.0), 5.0).rgb;
-#endif
-    totalLuminance += lerp(ambientTermBottom, ambientTermTop, cloudProperties.height) * cloudProperties.ambientOcclusion * _AmbientProbeDimmer;
+    // Evaluate the sun visibility
+    half3 sunTransmittance = EvaluateSunTransmittance(currentPositionPS, sun.direction, phaseFunction);
 
-    // Note: This is an alterated version of the  "Energy-conserving analytical integration"
-    // For some reason the divison by the clamped extinction just makes it all wrong.
-    const half3 integScatt = (totalLuminance - totalLuminance * transmittance);
-    volumetricRay.inScattering += integScatt * volumetricRay.transmittance;
+    // Compute luminance separately to factor out color multiplication at the end of the loop
+    // Use 1 as placeholder to compute the 'transfer function'
+    half3 sunLuminance = 1.0 * sunTransmittance * powderEffect;
+    half ambientLuminance = 1.0 * cloudProperties.ambientOcclusion;
+
+    // "Energy-conserving analytical integration"
+    // See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/
+    // No division by clamped extinction because albedo == 1 => sigma_s == sigma_e so it simplifies
+    // Note: this is not true anymore when _ScatteringTint is modified, but it still looks correct
+    volumetricRay.scattering += sunLuminance     * (volumetricRay.transmittance - volumetricRay.transmittance * transmittance);
+    volumetricRay.ambient    += ambientLuminance * (volumetricRay.transmittance - volumetricRay.transmittance * transmittance);
     volumetricRay.transmittance *= transmittance;
 }
 
