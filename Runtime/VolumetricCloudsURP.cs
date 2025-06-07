@@ -503,7 +503,13 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 #endif // OPTIMISATION
 
         private Texture2D customLutPresetMap;
+#if UNITY_EXTENSIONS
+        readonly Keyframe[] densityKeys;
+        readonly Keyframe[] erosionKeys;
+        readonly Keyframe[] ambientOcclusionKeys;
+#else
         private readonly Color[] customLutColorArray = new Color[customLutMapResolution];
+#endif // UNITY_EXTENSIONS
 
         public const float earthRad = 6378100.0f;
         public const float windNormalizationFactor = 100000.0f; // NOISE_TEXTURE_NORMALIZATION_FACTOR in "VolumetricCloudsUtilities.hlsl"
@@ -705,6 +711,34 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 customLutPresetMap.hideFlags = HideFlags.HideAndDontSave;
             }
 
+#if UNITY_EXTENSIONS
+            var pixels = customLutPresetMap.GetPixelData<half4>(mipLevel: 0);
+
+            if (densityKeys == null)
+            {
+                var setArrayJob = new UnityExtensions.Packages.SetArrayJob<half4>
+                {
+                    src = new half4(1.0f),
+                    dst = pixels,
+                };
+
+                Unity.Jobs.IJobForExtensions.Run(setArrayJob, customLutMapResolution);
+            }
+            else
+            {
+                var allocator = Unity.Collections.Allocator.TempJob;
+                var customLutJob = new CustomLutJob
+                {
+                    step = 1.0f / (customLutMapResolution - 1f),
+                    densityCurve = new UnityExtensions.Packages.Curve(densityKeys, allocator),
+                    erosionCurve = new UnityExtensions.Packages.Curve(erosionKeys, allocator),
+                    ambientOcclusionCurve = new UnityExtensions.Packages.Curve(ambientOcclusionKeys, allocator),
+                    pixels = pixels,
+                };
+
+                Unity.Jobs.IJobForExtensions.Run(customLutJob, customLutMapResolution);
+            }
+#else
             var pixels = customLutColorArray;
 
             var densityCurve = clouds.densityCurve.value;
@@ -731,10 +765,41 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             }
 
             customLutPresetMap.SetPixels(pixels);
+#endif // UNITY_EXTENSIONS
             customLutPresetMap.Apply();
 
             cloudsMaterial.SetTexture(cloudsCurveLut, customLutPresetMap);
         }
+
+#if UNITY_EXTENSIONS
+#if ENABLE_BURST_1_0_0_OR_NEWER
+        [Unity.Burst.BurstCompile(FloatMode = Unity.Burst.FloatMode.Fast)]
+#endif // ENABLE_BURST_1_0_0_OR_NEWER
+        struct CustomLutJob : Unity.Jobs.IJobFor
+        {
+            [Unity.Collections.ReadOnly]
+            public float step;
+
+            [Unity.Collections.ReadOnly, Unity.Collections.DeallocateOnJobCompletion]
+            public UnityExtensions.Packages.Curve densityCurve;
+            [Unity.Collections.ReadOnly, Unity.Collections.DeallocateOnJobCompletion]
+            public UnityExtensions.Packages.Curve erosionCurve;
+            [Unity.Collections.ReadOnly, Unity.Collections.DeallocateOnJobCompletion]
+            public UnityExtensions.Packages.Curve ambientOcclusionCurve;
+
+            [Unity.Collections.WriteOnly]
+            public Unity.Collections.NativeArray<half4> pixels;
+
+            public void Execute(int i)
+            {
+                float currTime = step * i;
+                float density = (i == 0 || i == customLutMapResolution - 1) ? 0 : Mathf.Clamp(densityCurve.Evaluate(currTime), 0.0f, 1.0f);
+                float erosion = Mathf.Clamp(erosionCurve.Evaluate(currTime), 0.0f, 1.0f);
+                float ambientOcclusion = Mathf.Clamp(1.0f - ambientOcclusionCurve.Evaluate(currTime), 0.0f, 1.0f);
+                pixels[i] = new half4(new half(density), new half(erosion), new half(ambientOcclusion), new half(1.0f));
+            }
+        }
+#endif // UNITY_EXTENSIONS
 
         private void SetupAmbientProbeIfNeeded(Material cloudsMaterial)
         {
@@ -803,6 +868,16 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         {
             cloudsMaterial = material;
             resolutionScale = resolution;
+
+#if UNITY_EXTENSIONS
+            if (cloudsVolume == null)
+                return;
+
+            // Curve values are read once and cannot be updated
+            densityKeys = cloudsVolume.densityCurve.value.keys;
+            erosionKeys = cloudsVolume.erosionCurve.value.keys;
+            ambientOcclusionKeys = cloudsVolume.ambientOcclusionCurve.value.keys;
+#endif // UNITY_EXTENSIONS
         }
 
         #region Non Render Graph Pass
