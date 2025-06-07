@@ -375,6 +375,14 @@ void GetCloudCoverageData(float3 positionPS, out CloudCoverageData data)
     data.maxCloudHeight = cloudMapData.w;
 }
 
+#if TERRAIN
+// Function that evaluates the coverage data for a given point in planet space
+void GetTerrainData(float3 positionPS, int mipOffset, out half4 data)
+{
+    data = SAMPLE_TEXTURE2D_LOD(_BaseMap, sampler_point_repeat, (positionPS.xz - _SnapshotData.xy) * _BaseMap_TexelSize.x, mipOffset); // TODO mad instead of adm
+}
+#endif // TERRAIN
+
 // Density remapping function
 half DensityRemap(half x, half a, half b, half c, half d)
 {
@@ -393,7 +401,7 @@ half PowderEffect(half cloudDensity, half cosAngle, half intensity)
 void EvaluateCloudProperties(float3 positionPS, float noiseMipOffset, float erosionMipOffset, bool cheapVersion, bool lightSampling,
                             out CloudProperties properties)
 {
-    // Initliaze all the values to 0 in case
+    // Initialise all the values to 0 in case
     ZERO_INITIALIZE(CloudProperties, properties);
 
 //#ifndef CLOUDS_SIMPLE_PRESET
@@ -496,6 +504,20 @@ void EvaluateCloudProperties(float3 positionPS, float noiseMipOffset, float eros
     // Attenuate everything by the density multiplier
     properties.density = base_cloud * _DensityMultiplier;
 }
+
+#if TERRAIN
+// Function that evaluates the terrain properties at a given absolute world space position
+void EvaluateTerrainProperties(float3 positionPS, int mipOffset, out half4 properties)
+{
+    // When rendering in camera space, we still want horizontal scrollingAdd commentMore actions
+#ifndef _LOCAL_VOLUMETRIC_CLOUDS
+    positionPS.xz += _WorldSpaceCameraPos.xz;
+#endif
+
+    GetTerrainData(positionPS, mipOffset, properties);
+    properties.w *= _TerrainData.y;
+}
+#endif // TERRAIN
 
 // Function that evaluates the transmittance to the sun at a given cloud position
 half3 EvaluateSunTransmittance(float3 positionPS, half3 sunDirection, PHASE_FUNCTION_STRUCTURE phaseFunction)
@@ -714,5 +736,55 @@ void EvaluateCloud(CloudProperties cloudProperties, half3 rayDirection,
     volumetricRay.ambient    += ambientLuminance * (volumetricRay.transmittance - volumetricRay.transmittance * transmittance);
     volumetricRay.transmittance *= transmittance;
 }
+
+#if TERRAIN
+// Evaluates the terrain colour from this positionAdd commentMore actions
+void EvaluateTerrain(half4 terrainProperties, half3 rayDirection,
+    float3 currentPositionWS, float3 entryEvaluationPointPS, float3 exitEvaluationPointPS,
+    half atten,
+    float stepSize, float relativeRayDistance, inout VolumetricRayResult volumetricRay)
+{
+    // TODO Get sun intensity
+    Light sun = GetMainLight();
+
+    // Evaluate the sun color at the position
+/*#if defined(_PHYSICALLY_BASED_SUN)
+    half3 sunColor = EvaluateSunColor(entryEvaluationPointPS, exitEvaluationPointPS, sun.direction, sun.color, relativeRayDistance);
+#else*/
+    half3 sunColor = sun.color;
+//#endif
+
+    volumetricRay.scattering = terrainProperties.xyz * sunColor;
+
+    float3 wpos = floor(currentPositionWS) + 0.5;
+
+    // compute normal
+    half3 dc = abs(currentPositionWS - wpos);
+    dc.y *= half(1.05); // avoid artifacts at the edges
+    half3 norm = half3(0.0, -rayDirection.y, 0.0);
+    if (dc.z > dc.x && dc.z > dc.y) norm = half3(0.0, 0.0, -sign(rayDirection.z));
+    if (dc.x > dc.z && dc.x > dc.y) norm = half3(-sign(rayDirection.x), 0.0, 0.0);
+
+    // apply shadow attenuation
+    volumetricRay.scattering *= atten;
+
+    // diffuse lambertian wrap
+    norm = normalize(norm);
+    half ndt = saturate(dot(norm, sun.direction.xyz) * 0.5 + 0.5);
+    volumetricRay.scattering *= lerp(ndt, 1.0, relativeRayDistance);
+
+    // day/night cycle
+    volumetricRay.scattering *= saturate(1.0 + sun.direction.y * 2.0);
+
+    // add fog
+    half fogFactor = saturate(_TerrainData.z / relativeRayDistance);
+    half heightFog = currentPositionWS.y / _TerrainData.y;
+    heightFog *= heightFog * fogFactor;
+    half fog = saturate(fogFactor * fogFactor + heightFog);
+
+    volumetricRay.scattering *= fog * fog;
+    volumetricRay.transmittance = half(1.0) - fog;
+}
+#endif // TERRAIN
 
 #endif
