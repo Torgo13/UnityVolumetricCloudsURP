@@ -97,7 +97,7 @@ Shader "Hidden/Sky/VolumetricClouds"
             half _VPAmbientLight;
             half _VPDaylightShadowAtten;
             
-            #pragma multi_compile_fragment _ TERRAIN
+            #pragma multi_compile_fragment _ _TERRAIN
 
             #pragma multi_compile_local_fragment _ _CLOUDS_MICRO_EROSION
             #pragma multi_compile_local_fragment _ _CLOUDS_AMBIENT_PROBE
@@ -208,7 +208,7 @@ Shader "Hidden/Sky/VolumetricClouds"
             TEXTURE2D(_BaseMap);
             SAMPLER(sampler_point_repeat);
             
-            #pragma multi_compile_fragment _ TERRAIN
+            #pragma multi_compile_fragment _ _TERRAIN
 
             #pragma multi_compile_local_fragment _ _LOW_RESOLUTION_CLOUDS
 
@@ -688,7 +688,7 @@ Shader "Hidden/Sky/VolumetricClouds"
             half _VPAmbientLight;
             half _VPDaylightShadowAtten;
             
-            #pragma multi_compile_fragment _ TERRAIN
+            #pragma multi_compile_fragment _ _TERRAIN
 
             // Note: This pass doesn't need to support dynamic resolution
             //float4 _ScreenResolution;

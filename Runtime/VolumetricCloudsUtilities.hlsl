@@ -375,13 +375,13 @@ void GetCloudCoverageData(float3 positionPS, out CloudCoverageData data)
     data.maxCloudHeight = cloudMapData.w;
 }
 
-#if TERRAIN
+#if _TERRAIN
 // Function that evaluates the coverage data for a given point in planet space
 void GetTerrainData(float3 positionPS, int mipOffset, out half4 data)
 {
     data = SAMPLE_TEXTURE2D_LOD(_BaseMap, sampler_point_repeat, (positionPS.xz - _SnapshotData.xy) * _BaseMap_TexelSize.x, mipOffset); // TODO mad instead of adm
 }
-#endif // TERRAIN
+#endif // _TERRAIN
 
 // Density remapping function
 half DensityRemap(half x, half a, half b, half c, half d)
@@ -505,7 +505,7 @@ void EvaluateCloudProperties(float3 positionPS, float noiseMipOffset, float eros
     properties.density = base_cloud * _DensityMultiplier;
 }
 
-#if TERRAIN
+#if _TERRAIN
 // Function that evaluates the terrain properties at a given absolute world space position
 void EvaluateTerrainProperties(float3 positionPS, int mipOffset, out half4 properties)
 {
@@ -517,7 +517,7 @@ void EvaluateTerrainProperties(float3 positionPS, int mipOffset, out half4 prope
     GetTerrainData(positionPS, mipOffset, properties);
     properties.w *= _TerrainData.y;
 }
-#endif // TERRAIN
+#endif // _TERRAIN
 
 // Function that evaluates the transmittance to the sun at a given cloud position
 half3 EvaluateSunTransmittance(float3 positionPS, half3 sunDirection, PHASE_FUNCTION_STRUCTURE phaseFunction)
@@ -737,7 +737,7 @@ void EvaluateCloud(CloudProperties cloudProperties, half3 rayDirection,
     volumetricRay.transmittance *= transmittance;
 }
 
-#if TERRAIN
+#if _TERRAIN
 // Evaluates the terrain colour from this positionAdd commentMore actions
 void EvaluateTerrain(half4 terrainProperties, half3 rayDirection,
     float3 currentPositionWS, float3 entryEvaluationPointPS, float3 exitEvaluationPointPS,
@@ -785,6 +785,6 @@ void EvaluateTerrain(half4 terrainProperties, half3 rayDirection,
     volumetricRay.scattering *= fog * fog;
     volumetricRay.transmittance = half(1.0) - fog;
 }
-#endif // TERRAIN
+#endif // _TERRAIN
 
 #endif

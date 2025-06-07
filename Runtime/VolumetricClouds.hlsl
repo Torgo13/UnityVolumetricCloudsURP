@@ -79,14 +79,14 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
             bool activeSampling = true;
             int sequentialEmptySamples = 0;
             
-#if TERRAIN
+#if _TERRAIN
             int snapshotSize = _BaseMap_TexelSize.z; //4096; //rcp(_SnapshotData.z);
-#endif // TERRAIN
+#endif // _TERRAIN
 
             // Do the ray march for every step that we can.
             while (currentIndex < (int)_NumPrimarySteps && currentDistance < totalDistance)
             {
-#if TERRAIN
+#if _TERRAIN
                 // Convert to planet space
                 float3 positionPS = ConvertToPS(currentPositionWS);
 
@@ -167,7 +167,7 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
                         break;
                     }
                 }
-#endif // TERRAIN
+#endif // _TERRAIN
                 
                 // Compute the camera-distance based attenuation
                 float densityAttenuationValue = DensityFadeValue(rayMarchRange.start + currentDistance);
