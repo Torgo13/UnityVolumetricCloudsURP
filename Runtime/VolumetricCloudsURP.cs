@@ -729,7 +729,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 var allocator = Unity.Collections.Allocator.TempJob;
                 var customLutJob = new CustomLutJob
                 {
-                    step = 1.0f / (customLutMapResolution - 1f),
+                    step = 1.0f / (customLutMapResolution - 1),
                     densityCurve = new UnityExtensions.Packages.Curve(densityKeys, allocator),
                     erosionCurve = new UnityExtensions.Packages.Curve(erosionKeys, allocator),
                     ambientOcclusionCurve = new UnityExtensions.Packages.Curve(ambientOcclusionKeys, allocator),
@@ -793,7 +793,8 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             public void Execute(int i)
             {
                 float currTime = step * i;
-                float density = (i == 0 || i == customLutMapResolution - 1) ? 0 : Mathf.Clamp(densityCurve.Evaluate(currTime), 0.0f, 1.0f);
+                int temp = clamp(i % (customLutMapResolution - 1), 0, 1);
+                float density = temp * Mathf.Clamp(densityCurve.Evaluate(currTime), 0.0f, 1.0f);
                 float erosion = Mathf.Clamp(erosionCurve.Evaluate(currTime), 0.0f, 1.0f);
                 float ambientOcclusion = Mathf.Clamp(1.0f - ambientOcclusionCurve.Evaluate(currTime), 0.0f, 1.0f);
                 pixels[i] = new half4(new half(density), new half(erosion), new half(ambientOcclusion), new half(1.0f));
