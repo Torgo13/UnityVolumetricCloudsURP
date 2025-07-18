@@ -727,16 +727,22 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             else
             {
                 var allocator = Unity.Collections.Allocator.TempJob;
+                var densityCurve = new UnityExtensions.Packages.Curve(densityKeys, allocator);
+                var erosionCurve = new UnityExtensions.Packages.Curve(erosionKeys, allocator);
+                var ambientOcclusionCurve = new UnityExtensions.Packages.Curve(ambientOcclusionKeys, allocator);
                 var customLutJob = new CustomLutJob
                 {
                     step = 1.0f / (customLutMapResolution - 1),
-                    densityCurve = new UnityExtensions.Packages.Curve(densityKeys, allocator),
-                    erosionCurve = new UnityExtensions.Packages.Curve(erosionKeys, allocator),
-                    ambientOcclusionCurve = new UnityExtensions.Packages.Curve(ambientOcclusionKeys, allocator),
+                    densityCurve = densityCurve,
+                    erosionCurve = erosionCurve,
+                    ambientOcclusionCurve = ambientOcclusionCurve,
                     pixels = pixels,
                 };
 
                 Unity.Jobs.IJobForExtensions.Run(customLutJob, customLutMapResolution);
+                densityCurve.Dispose();
+                erosionCurve.Dispose();
+                ambientOcclusionCurve.Dispose();
             }
 #else
             var pixels = customLutColorArray;
@@ -773,18 +779,18 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
 #if UNITY_EXTENSIONS
 #if ENABLE_BURST_1_0_0_OR_NEWER
-        [Unity.Burst.BurstCompile(FloatMode = Unity.Burst.FloatMode.Fast)]
+        [Unity.Burst.BurstCompile(Unity.Burst.FloatPrecision.Low, Unity.Burst.FloatMode.Fast)]
 #endif // ENABLE_BURST_1_0_0_OR_NEWER
         struct CustomLutJob : Unity.Jobs.IJobFor
         {
             [Unity.Collections.ReadOnly]
             public float step;
 
-            [Unity.Collections.ReadOnly, Unity.Collections.DeallocateOnJobCompletion]
+            [Unity.Collections.ReadOnly]
             public UnityExtensions.Packages.Curve densityCurve;
-            [Unity.Collections.ReadOnly, Unity.Collections.DeallocateOnJobCompletion]
+            [Unity.Collections.ReadOnly]
             public UnityExtensions.Packages.Curve erosionCurve;
-            [Unity.Collections.ReadOnly, Unity.Collections.DeallocateOnJobCompletion]
+            [Unity.Collections.ReadOnly]
             public UnityExtensions.Packages.Curve ambientOcclusionCurve;
 
             [Unity.Collections.WriteOnly]
@@ -794,9 +800,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             {
                 float currTime = step * i;
                 int temp = clamp(i % (customLutMapResolution - 1), 0, 1);
-                float density = temp * Mathf.Clamp(densityCurve.Evaluate(currTime), 0.0f, 1.0f);
-                float erosion = Mathf.Clamp(erosionCurve.Evaluate(currTime), 0.0f, 1.0f);
-                float ambientOcclusion = Mathf.Clamp(1.0f - ambientOcclusionCurve.Evaluate(currTime), 0.0f, 1.0f);
+                float density = temp * saturate(densityCurve.Evaluate(currTime));
+                float erosion = saturate(erosionCurve.Evaluate(currTime));
+                float ambientOcclusion = saturate(1.0f - ambientOcclusionCurve.Evaluate(currTime));
                 pixels[i] = new half4(new half(density), new half(erosion), new half(ambientOcclusion), new half(1.0f));
             }
         }
