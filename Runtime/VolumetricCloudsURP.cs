@@ -1305,6 +1305,30 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
                 Matrix4x4 skyMatrixP = GL.GetGPUProjectionMatrix(skyProjectionMatrix, true);
 
+#if OPTIMISATION
+                const int length = 6;
+                const Unity.Collections.Allocator allocator = Unity.Collections.Allocator.TempJob;
+                const Unity.Collections.NativeArrayOptions options = Unity.Collections.NativeArrayOptions.UninitializedMemory;
+
+                var skyViewsNative = new Unity.Collections.NativeArray<Matrix4x4>(length, allocator, options);
+                var skyViewMatricesNative = new Unity.Collections.NativeArray<Matrix4x4>(length, allocator, options);
+                var skyMatrixVPInverse = new Unity.Collections.NativeArray<Matrix4x4>(length, allocator, options);
+
+                skyViewsNative.CopyFrom(skyViews);
+                skyViewMatricesNative.CopyFrom(skyViewMatrices);
+
+                var skyMatrixVPInverseJob = new SkyMatrixVPInverseJob
+                {
+                    skyMatrixP = skyMatrixP,
+                    skyViews = skyViewsNative.Reinterpret<float4x4>(),
+                    skyViewMatrices = skyViewMatricesNative.Reinterpret<float4x4>(),
+                    skyMatrixVPInverse = skyMatrixVPInverse.Reinterpret<float4x4>(),
+                };
+
+                Unity.Jobs.IJobForExtensions.Run(skyMatrixVPInverseJob, length);
+                skyViewMatricesNative.CopyTo(skyViewMatrices);
+#endif // OPTIMISATION
+
                 cmd.SetGlobalVector(worldSpaceCameraPos, Vector3.zero);
                 cmd.SetGlobalFloat(disableSunDisk, 1.0f);
 
@@ -1318,6 +1342,11 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                     //var lookAt = Matrix4x4.LookAt(Vector3.zero, CoreUtils.lookAtList[i], CoreUtils.upVectorList[i]);
                     //Matrix4x4 viewMatrix = lookAt * Matrix4x4.Scale(new Vector3(1.0f, 1.0f, -1.0f)); // Need to scale -1.0 on Z to match what is being done in the camera.wolrdToCameraMatrix API. ...
 
+#if OPTIMISATION
+                    // Camera matrices for skybox rendering
+                    cmd.SetViewMatrix(skyViewMatrices[i]);
+                    cmd.SetGlobalMatrix(unity_MatrixInvVP, skyMatrixVPInverse[i]);
+#else
                     Matrix4x4 viewMatrix = skyViews[i];
                     viewMatrix *= Matrix4x4.Scale(new Vector3(1.0f, 1.0f, -1.0f));
                     skyViewMatrices[i] = viewMatrix;
@@ -1328,11 +1357,17 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                     cmd.SetViewMatrix(skyViewMatrices[i]);
                     //cmd.SetGlobalMatrix(unity_MatrixVP, skyMatrixVP);
                     cmd.SetGlobalMatrix(unity_MatrixInvVP, skyMatrixVP.inverse);
+#endif // OPTIMISATION
 
                     // Can we exclude the sun disk in ambient probe?
                     RendererList rendererList = context.CreateSkyboxRendererList(camera, skyProjectionMatrix, skyViewMatrices[i]);
                     cmd.DrawRendererList(rendererList);
                 }
+
+#if OPTIMISATION
+                skyViewMatricesNative.Dispose();
+                skyMatrixVPInverse.Dispose();
+#endif // OPTIMISATION
 
                 cmd.SetGlobalVector(worldSpaceCameraPos, cameraPositionWS);
                 cmd.SetGlobalFloat(disableSunDisk, 0.0f);
@@ -1355,6 +1390,29 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
             CommandBufferPool.Release(cmd);
         }
+
+#if OPTIMISATION
+        [Unity.Burst.BurstCompile(FloatMode = Unity.Burst.FloatMode.Fast)]
+        struct SkyMatrixVPInverseJob : Unity.Jobs.IJobFor
+        {
+            [Unity.Collections.ReadOnly]
+            public float4x4 skyMatrixP;
+            [Unity.Collections.ReadOnly, Unity.Collections.DeallocateOnJobCompletion]
+            public Unity.Collections.NativeArray<float4x4> skyViews;
+
+            [Unity.Collections.WriteOnly]
+            public Unity.Collections.NativeArray<float4x4> skyViewMatrices;
+            [Unity.Collections.WriteOnly]
+            public Unity.Collections.NativeArray<float4x4> skyMatrixVPInverse;
+
+            public void Execute(int index)
+            {
+                Matrix4x4 viewMatrix = mul(skyViews[index], Unity.Mathematics.float4x4.Scale(new float3(1.0f, 1.0f, -1.0f)));
+                skyViewMatrices[index] = viewMatrix;
+                skyMatrixVPInverse[index] = inverse(mul(skyMatrixP, viewMatrix));
+            }
+        }
+#endif // OPTIMISATION
         #endregion
 
 #if UNITY_6000_0_OR_NEWER
