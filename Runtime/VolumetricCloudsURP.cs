@@ -382,6 +382,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 #endif
     }
 
+#if OPTIMISATION
+    [Unity.Burst.BurstCompile]
+#endif // OPTIMISATION
     public class VolumetricCloudsPass : ScriptableRenderPass
     {
         private const string rasterPassProfilerTag = "Trace Volumetric Clouds";
@@ -489,10 +492,10 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
 #if OPTIMISATION
         private static readonly System.Linq.Expressions.ParameterExpression param
-            = System.Linq.Expressions.Expression.Parameter(typeof(object), "instance");
+            = System.Linq.Expressions.Expression.Parameter(typeof(UniversalRenderer), "instance");
 
-        private static readonly Func<object, RTHandle> depthTextureDelegate
-            = System.Linq.Expressions.Expression.Lambda<Func<object, RTHandle>>(
+        private static readonly Func<UniversalRenderer, RTHandle> depthTextureDelegate
+            = System.Linq.Expressions.Expression.Lambda<Func<UniversalRenderer, RTHandle>>(
                 System.Linq.Expressions.Expression.Convert(
                 System.Linq.Expressions.Expression.Field(
                 System.Linq.Expressions.Expression.Convert(param, typeof(UniversalRenderer)),
@@ -752,6 +755,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             }
         }
 
+#if OPTIMISATION
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+#endif // OPTIMISATION
         private static Vector2 IntersectSphere(float sphereRadius, float cosChi,
                                           float radialDistance, float rcpRadialDistance)
         {
@@ -785,7 +791,12 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                                                           -cosChi + sqrt(d)));
         }
 
+#if OPTIMISATION
+        [Unity.Burst.BurstCompile]
+        private static float GetCloudNearPlane(in Vector3 originPS, float lowerBoundPS, float higherBoundPS)
+#else
         private static float GetCloudNearPlane(Vector3 originPS, float lowerBoundPS, float higherBoundPS)
+#endif // OPTIMISATION
         {
             float radialDistance = length(originPS);
             float rcpRadialDistance = rcp(radialDistance);
@@ -1392,7 +1403,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         }
 
 #if OPTIMISATION
-        [Unity.Burst.BurstCompile(FloatMode = Unity.Burst.FloatMode.Fast)]
+        [Unity.Burst.BurstCompile]
         struct SkyMatrixVPInverseJob : Unity.Jobs.IJobFor
         {
             [Unity.Collections.ReadOnly]
@@ -1601,6 +1612,19 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         private static readonly int mainLightWorldToLight = Shader.PropertyToID("_MainLightWorldToLight");
         private static readonly int mainLightCookieTextureFormat = Shader.PropertyToID("_MainLightCookieTextureFormat");
 
+#if OPTIMISATION
+        // Should we support colored shadows?
+        private const GraphicsFormat singleChannel = GraphicsFormat.R16_UNorm; //option 2: R8_UNorm
+        private readonly GraphicsFormat cookieFormat =
+#if UNITY_2023_2_OR_NEWER
+            SystemInfo.IsFormatSupported(singleChannel, GraphicsFormatUsage.Render)
+#else
+            SystemInfo.IsFormatSupported(singleChannel, FormatUsage.Render)
+#endif
+                ? singleChannel
+                : GraphicsFormat.B10G11R11_UFloatPack32;
+#endif // OPTIMISATION
+
         public VolumetricCloudsShadowsPass(Material material)
         {
             cloudsMaterial = material;
@@ -1626,6 +1650,8 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 #endif
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
         {
+#if OPTIMISATION
+#else
             // Should we support colored shadows?
             GraphicsFormat cookieFormat = GraphicsFormat.R16_UNorm; //option 2: R8_UNorm
 #if UNITY_2023_2_OR_NEWER
@@ -1634,6 +1660,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             bool useSingleChannel = SystemInfo.IsFormatSupported(cookieFormat, FormatUsage.Render);
 #endif
             cookieFormat = useSingleChannel ? cookieFormat : GraphicsFormat.B10G11R11_UFloatPack32;
+#endif // OPTIMISATION
 
             int shadowResolution = (int)cloudsVolume.shadowResolution.value;
             RenderTextureDescriptor desc = renderingData.cameraData.cameraTargetDescriptor;
@@ -1793,7 +1820,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             cmd.Clear();
             CommandBufferPool.Release(cmd);
         }
-        #endregion
+#endregion
 
 #if UNITY_6000_0_OR_NEWER
         #region Render Graph Pass
