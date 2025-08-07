@@ -1407,7 +1407,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
             public void Execute(int index)
             {
-                Matrix4x4 viewMatrix = mul(skyViews[index], Unity.Mathematics.float4x4.Scale(new float3(1.0f, 1.0f, -1.0f)));
+                var viewMatrix = mul(skyViews[index], Unity.Mathematics.float4x4.Scale(new float3(1.0f, 1.0f, -1.0f)));
                 skyViewMatrices[index] = viewMatrix;
                 skyMatrixVPInverse[index] = inverse(mul(skyMatrixP, viewMatrix));
             }
