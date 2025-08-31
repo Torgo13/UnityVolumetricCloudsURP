@@ -1,4 +1,9 @@
+#define _LOCAL_VOLUMETRIC_CLOUDS
+#define _CONST_EARTH_RADIUS
+
+using Unity.Mathematics;
 using UnityEngine;
+using static Unity.Mathematics.math;
 
 // Run in edit mode for easier testing
 //[ExecuteInEditMode]
@@ -63,21 +68,28 @@ public class VolumetricCloudsUtilities : MonoBehaviour
     private static readonly int microErosionFactor = Shader.PropertyToID("_MicroErosionFactor");
     private static readonly int fadeInStart = Shader.PropertyToID("_FadeInStart");
     private static readonly int fadeInDistance = Shader.PropertyToID("_FadeInDistance");
+#if _CONST_EARTH_RADIUS
+#else
     private static readonly int earthRadius = Shader.PropertyToID("_EarthRadius");
+#endif // _CONST_EARTH_RADIUS
     private static readonly int erosionNoise = Shader.PropertyToID("_ErosionNoise");
     private static readonly int worleyNoise = Shader.PropertyToID("_Worley128RGBA");
     private static readonly int cloudsCurveLut = Shader.PropertyToID("_CloudCurveTexture");
 
+#if _CONST_EARTH_RADIUS
+    private const float _EarthRadius = 6378100.0f;
+#else
     private float _EarthRadius = 6378100.0f;
+#endif // _CONST_EARTH_RADIUS
     private float _LowestCloudAltitude = 1200.0f;
     private float _HighestCloudAltitude = 3200.0f;
     private float _NumPrimarySteps = 32.0f;
     private float _MaxStepSize = 250.0f;
     private float _FadeInStart = 0.0f;
     private float _FadeInDistance = 5000.0f;
-    private Vector4 _WindDirection = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-    private Vector4 _WindVector = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-    private Vector4 _ShapeNoiseOffset = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    private float4 _WindDirection = new float4(0.0f, 0.0f, 0.0f, 0.0f);
+    private float4 _WindVector = new float4(0.0f, 0.0f, 0.0f, 0.0f);
+    private float4 _ShapeNoiseOffset = new float4(0.0f, 0.0f, 0.0f, 0.0f);
     private float _VerticalShapeNoiseOffset = 0.0f;
     private float _VerticalShapeWindDisplacement = 0.0f;
     private float _VerticalErosionWindDisplacement = 0.0f;
@@ -92,52 +104,55 @@ public class VolumetricCloudsUtilities : MonoBehaviour
     private float _MicroErosionFactor = 0.0f;
     private float _DensityMultiplier = 0.0f;
     private float _AltitudeDistortion = 0.0f;
-    //private Vector3 _WorldSpaceCameraPos = new(0.0f, 0.0f, 0.0f);
-    private Vector3 _PlanetCenterPosition = new(0.0f, 0.0f, 0.0f);
+    //private float3 _WorldSpaceCameraPos = new(0.0f, 0.0f, 0.0f);
+    private float3 _PlanetCenterPosition = new(0.0f, 0.0f, 0.0f);
 
     // HLSL Functions in C#
-    private Vector3 ConvertToPS(Vector3 x) => (x - _PlanetCenterPosition);
-    private float dot(Vector3 x, Vector3 y) => Vector3.Dot(x, y);
-    private float exp(float value) => Mathf.Exp(value);
-    private float lerp(float a, float b, float t) => Mathf.Lerp(a, b, t);
-    private float length(Vector3 value) => Vector3.Distance(value, Vector3.zero);
-    private float RangeRemap(float min, float max, float t) => saturate((t - min) / (max - min));
-    private float sign(float value) => Mathf.Sign(value);
-    private float Sq(float value) => value * value;
-    private float sqrt(float value) => Mathf.Sqrt(value);
-    private float saturate(float value) => Mathf.Clamp01(value);
-    private float min(float x, float y) => Mathf.Min(x, y);
-    private float max(float x, float y) => Mathf.Max(x, y);
-    private Vector4 SAMPLE_TEXTURE3D_LOD(Texture3D tex3D, bool dummySampler, Vector3 texCoord, float dummyLod) => tex3D.GetPixelBilinear(texCoord.x, texCoord.y, texCoord.z);
-    private Vector4 SAMPLE_TEXTURE2D_LOD(Texture2D tex2D, bool dummySampler, Vector2 texCoord, float dummyLod) => tex2D.GetPixelBilinear(texCoord.x, texCoord.y);
+    private float3 ConvertToPS(float3 x) => (x - _PlanetCenterPosition);
+    private static float RangeRemap(float min, float max, float t) => saturate((t - min) / (max - min));
+    private static float Sq(float value) => value * value;
+    private static float FastSign(float value) => sign(value);
+    private static float SAMPLE_TEXTURE3D_LOD(Texture3D tex3D, bool dummySampler, float3 texCoord, float dummyLod) => tex3D.GetPixelBilinear(texCoord.x, texCoord.y, texCoord.z).r;
+    private static float4 SAMPLE_TEXTURE2D_LOD(Texture2D tex2D, bool dummySampler, float2 texCoord, float dummyLod) => (Vector4)tex2D.GetPixelBilinear(texCoord.x, texCoord.y);
 
-    struct Ray
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct CloudRay
     {
         // Origin of the ray in world space
-        public Vector3 originWS;
-        // Direction of the ray in world space
-        public Vector3 direction;
+        public
+        float3 originWS;
         // Maximal ray length before hitting the far plane or an occluder
-        public float maxRayLength;
+        public
+        float maxRayLength;
+        // Direction of the ray in world space
+        public
+        float3 direction;
         // Integration Noise
-        public float integrationNoise;
+        public
+        float integrationNoise;
     };
 
-    struct RayHit
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct VolumetricRayResult
     {
         // Amount of lighting that comes from the clouds
-        public Vector3 inScattering;
+        public
+        float3 scattering;
         // Transmittance through the clouds
-        public float transmittance;
+        public
+        float transmittance;
         // Mean distance of the clouds
-        public float meanDistance;
+        public
+        float meanDistance;
         // Flag that defines if the ray is valid or not
-        public bool invalidRay;
+        public
+        bool invalidRay;
     };
 
     // Volumetric Clouds
-    private Vector2 IntersectSphere(float sphereRadius, float cosChi,
-                                    float radialDistance, float rcpRadialDistance)
+    static
+    float2 IntersectSphere(float sphereRadius, float cosChi,
+                           float radialDistance, float rcpRadialDistance)
     {
         // r_o = float2(0, r)
         // r_d = float2(sinChi, cosChi)
@@ -165,17 +180,21 @@ public class VolumetricCloudsUtilities : MonoBehaviour
         float d = Sq(sphereRadius * rcpRadialDistance) - saturate(1 - cosChi * cosChi);
 
         // Return the value of 'd' for debugging purposes.
-        return (d < 0.0f) ? new Vector2(-1.0f, -1.0f) : (radialDistance * new Vector2(-cosChi - sqrt(d),
+        return (d < 0) ? d : (radialDistance * float2(-cosChi - sqrt(d),
                                                       -cosChi + sqrt(d)));
     }
 
-    private float ComputeCosineOfHorizonAngle(float rcpR)
+#if _CONST_EARTH_RADIUS
+    static
+#endif // _CONST_EARTH_RADIUS
+    float ComputeCosineOfHorizonAngle(float r)
     {
         float R = _EarthRadius;
-        float sinHor = R * rcpR;
-        return -sqrt(saturate(1.0f - sinHor * sinHor));
+        float sinHor = R * rcp(r);
+        return -sqrt(saturate(1 - sinHor * sinHor));
     }
 
+#if UNUSED
     // Function that interects a ray with a sphere (optimized for very large sphere), returns up to two positives distances.
 
     // numSolutions: 0, 1 or 2 positive solves
@@ -183,21 +202,21 @@ public class VolumetricCloudsUtilities : MonoBehaviour
     // dir: normalized ray direction
     // radius: planet radius
     // result: the distance of hitPos, which means the value of solves
-    private int RaySphereIntersection(Vector3 startWS, Vector3 dir, float radius, out Vector2 result)
+    int RaySphereIntersection(float3 startWS, float3 dir, float radius, out float2 result)
     {
-        Vector3 startPS = startWS + new Vector3(0.0f, _EarthRadius, 0.0f);
+        float3 startPS = startWS + float3(0, _EarthRadius, 0);
         float a = dot(dir, dir);
         float b = 2.0f * dot(dir, startPS);
         float c = dot(startPS, startPS) - (radius * radius);
         float d = (b * b) - 4.0f * a * c;
-        result = new Vector2(0.0f, 0.0f);
+        result = default;
         int numSolutions = 0;
         if (d >= 0.0f)
         {
             // Compute the values required for the solution eval
             float sqrtD = sqrt(d);
-            float q = -0.5f * (b + sign(b) * sqrtD);
-            result = new Vector2(c / q, q / a);
+            float q = -0.5f * (b + FastSign(b) * sqrtD);
+            result = float2(c / q, q / a);
             // Remove the solutions we do not want
             numSolutions = 2;
             if (result.x < 0.0f)
@@ -205,6 +224,7 @@ public class VolumetricCloudsUtilities : MonoBehaviour
                 numSolutions--;
                 result.x = result.y;
             }
+
             if (result.y < 0.0f)
                 numSolutions--;
         }
@@ -214,36 +234,42 @@ public class VolumetricCloudsUtilities : MonoBehaviour
 
     // Returns true if the ray exits the cloud volume (doesn't intersect earth)
     // The ray is supposed to start inside the volume
-    private bool ExitCloudVolume(Vector3 originPS, Vector3 dir, float higherBoundPS, out float tExit)
+    bool ExitCloudVolume(float3 originPS, half3 dir, float higherBoundPS, out float tExit)
     {
         // Given that we are inside the volume, we are guaranteed to exit at the outer bound
         float radialDistance = length(originPS);
-        float rcpRadialDistance = 1.0f / radialDistance;
-        float cosChi = dot(originPS, dir) * rcpRadialDistance;
-        tExit = IntersectSphere(higherBoundPS, cosChi, radialDistance, rcpRadialDistance).y;
+        float cosChi = dot(originPS, dir) * rcp(radialDistance);
+        tExit = IntersectSphere(higherBoundPS, cosChi, radialDistance, rcp(radialDistance)).y;
 
         // If the ray intersects the earth, then the sun is occluded by the earth
-        return cosChi >= ComputeCosineOfHorizonAngle(rcpRadialDistance);
+        return cosChi >= ComputeCosineOfHorizonAngle(radialDistance);
     }
+#endif // UNUSED
 
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     struct RayMarchRange
     {
         // The start of the range
-        public float start;
+        public
+        float start;
         // The length of the range
-        public float end;
+        public
+        float end;
     };
 
     // Returns true if the ray intersects the cloud volume
     // Outputs the entry and exit distance from the volume
-    private bool IntersectCloudVolume(Vector3 originPS, Vector3 dir, float lowerBoundPS, float higherBoundPS, out float tEntry, out float tExit)
+#if _CONST_EARTH_RADIUS
+    static
+#endif // _CONST_EARTH_RADIUS
+    bool IntersectCloudVolume(float3 originPS, half3 dir, float lowerBoundPS, float higherBoundPS, out float tEntry, out float tExit)
     {
         bool intersect;
         float radialDistance = length(originPS);
-        float rcpRadialDistance = 1.0f / radialDistance;
+        float rcpRadialDistance = rcp(radialDistance);
         float cosChi = dot(originPS, dir) * rcpRadialDistance;
-        Vector2 tInner = IntersectSphere(lowerBoundPS, cosChi, radialDistance, rcpRadialDistance);
-        Vector2 tOuter = IntersectSphere(higherBoundPS, cosChi, radialDistance, rcpRadialDistance);
+        float2 tInner = IntersectSphere(lowerBoundPS, cosChi, radialDistance, rcpRadialDistance);
+        float2 tOuter = IntersectSphere(higherBoundPS, cosChi, radialDistance, rcpRadialDistance);
 
         if (tInner.x < 0.0f && tInner.y >= 0.0f) // Below the lower bound
         {
@@ -251,7 +277,7 @@ public class VolumetricCloudsUtilities : MonoBehaviour
             tEntry = tInner.y;
             tExit = tOuter.y;
             // We don't see the clouds if they are behind Earth
-            intersect = cosChi >= ComputeCosineOfHorizonAngle(rcpRadialDistance);
+            intersect = cosChi >= ComputeCosineOfHorizonAngle(radialDistance);
         }
         else // Inside or above the cloud volume
         {
@@ -266,79 +292,108 @@ public class VolumetricCloudsUtilities : MonoBehaviour
         return intersect;
     }
 
-    private bool GetCloudVolumeIntersection(Vector3 originWS, Vector3 dir, out RayMarchRange rayMarchRange)
+    bool GetCloudVolumeIntersection(float3 originWS, half3 dir, out RayMarchRange rayMarchRange)
     {
-        rayMarchRange = default;
+#if _LOCAL_VOLUMETRIC_CLOUDS
         return IntersectCloudVolume(ConvertToPS(originWS), dir, _LowestCloudAltitude, _HighestCloudAltitude, out rayMarchRange.start, out rayMarchRange.end);
+#else
+        {
+            ZERO_INITIALIZE(RayMarchRange, rayMarchRange);
+
+            // intersect with all three spheres
+            float2 intersectionInter, intersectionOuter;
+            int numInterInner = RaySphereIntersection(originWS, dir, _LowestCloudAltitude, intersectionInter);
+            int numInterOuter = RaySphereIntersection(originWS, dir, _HighestCloudAltitude, intersectionOuter);
+
+            // The ray starts at the first intersection with the lower bound and goes up to the first intersection with the outer bound
+            rayMarchRange.start = intersectionInter.x;
+            rayMarchRange.end = intersectionOuter.x;
+
+            // Return if we have an intersection
+            return true;
+        }
+#endif
     }
 
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     struct CloudProperties
     {
         // Normalized float that tells the "amount" of clouds that is at a given location
-        public float density;
+        public
+        float density;
         // Ambient occlusion for the ambient probe
-        public float ambientOcclusion;
+        public
+        float ambientOcclusion;
         // Normalized value that tells us the height within the cloud volume (vertically)
-        public float height;
+        public
+        float height;
         // Transmittance of the cloud
-        public float sigmaT;
+        public
+        float sigmaT;
     };
 
     // Global attenuation of the density based on the camera distance
-    private float DensityFadeValue(float distanceToCamera)
+    float DensityFadeValue(float distanceToCamera)
     {
-        return saturate((distanceToCamera - _FadeInStart) / (_FadeInStart + _FadeInDistance));
+        return saturate((distanceToCamera - _FadeInStart) * rcp(_FadeInStart + _FadeInDistance));
     }
 
     // Evaluate the erosion mip offset based on the camera distance
-    private float ErosionMipOffset(float distanceToCamera)
+    static
+    float ErosionMipOffset(float distanceToCamera)
     {
-        return lerp(0.0f, 4.0f, saturate((distanceToCamera - MIN_EROSION_DISTANCE) / (MAX_EROSION_DISTANCE - MIN_EROSION_DISTANCE)));
+        return lerp(0.0f, 4.0f, saturate((distanceToCamera - MIN_EROSION_DISTANCE) * rcp(MAX_EROSION_DISTANCE - MIN_EROSION_DISTANCE)));
     }
 
     // Function that returns the normalized height inside the cloud layer
-    private float EvaluateNormalizedCloudHeight(Vector3 positionPS)
+    float EvaluateNormalizedCloudHeight(float3 positionPS)
     {
         return RangeRemap(_LowestCloudAltitude, _HighestCloudAltitude, length(positionPS));
     }
 
     // Animation of the cloud shape position
-    private Vector3 AnimateShapeNoisePosition(Vector3 positionPS)
+    float3 AnimateShapeNoisePosition(float3 positionPS)
     {
         // We reduce the top-view repetition of the pattern
         positionPS.y += (positionPS.x / 3.0f + positionPS.z / 7.0f);
         // We add the contribution of the wind displacements
-        return positionPS + new Vector3(_WindVector.x, 0.0f, _WindVector.y) * _MediumWindSpeed + new Vector3(0.0f, _VerticalShapeWindDisplacement, 0.0f);
+        return positionPS + float3(_WindVector.x, 0.0f, _WindVector.y) * _MediumWindSpeed + float3(0.0f, _VerticalShapeWindDisplacement, 0.0f);
         //return positionPS;
     }
 
     // Animation of the cloud erosion position
-    private Vector3 AnimateErosionNoisePosition(Vector3 positionPS)
+    float3 AnimateErosionNoisePosition(float3 positionPS)
     {
-        return positionPS + new Vector3(_WindVector.x, 0.0f, _WindVector.y) * _SmallWindSpeed + new Vector3(0.0f, _VerticalErosionWindDisplacement, 0.0f);
+        return positionPS + float3(_WindVector.x, 0.0f, _WindVector.y) * _SmallWindSpeed + float3(0.0f, _VerticalErosionWindDisplacement, 0.0f);
         //return positionPS;
     }
 
     // Structure that holds all the data used to define the cloud density of a point in space
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     struct CloudCoverageData
     {
         // From a top-down view, in what proportions this pixel has clouds
-        public float coverage;
+        public
+        float coverage;
         // From a top-down view, in what proportions this pixel has clouds
-        public float rainClouds;
+        public
+        float rainClouds;
         // Value that allows us to request the cloudtype using the density
-        public float cloudType;
+        public
+        float cloudType;
         // Maximal cloud height
-        public float maxCloudHeight;
+        public
+        float maxCloudHeight;
     };
 
     // Function that evaluates the coverage data for a given point in planet space
-    private void GetCloudCoverageData(Vector3 positionPS, out CloudCoverageData data)
+    static
+    void GetCloudCoverageData(float3 positionPS, out CloudCoverageData data)
     {
         // Convert the position into dome space and center the texture is centered above (0, 0, 0)
         //float2 normalizedPosition = AnimateCloudMapPosition(positionPS).xz / _NormalizationFactor * _CloudMapTiling.xy + _CloudMapTiling.zw - 0.5;
         //#if defined(CLOUDS_SIMPLE_PRESET)
-        Vector4 cloudMapData = new Vector4(0.9f, 0.0f, 0.25f, 1.0f);
+        float4 cloudMapData = float4(0.9f, 0.0f, 0.25f, 1.0f);
         //#else
         //float4 cloudMapData = SAMPLE_TEXTURE2D_LOD(_CloudMapTexture, s_linear_repeat_sampler, float2(normalizedPosition), 0);
         //#endif
@@ -349,27 +404,36 @@ public class VolumetricCloudsUtilities : MonoBehaviour
     }
 
     // Density remapping function
-    private float DensityRemap(float x, float a, float b, float c, float d)
+    static
+    float DensityRemap(float x, float a, float b, float c, float d)
     {
-        return (((x - a) / (b - a)) * (d - c)) + c;
+        return (((x - a) * rcp(b - a)) * (d - c)) + c;
     }
 
+#if UNUSED
+    // Horizon zero dawn technique to darken the clouds
+    float PowderEffect(half cloudDensity, half cosAngle, half intensity)
+    {
+        float powderEffect = 1.0f - exp(-cloudDensity * 4.0f);
+        powderEffect = saturate(powderEffect * 2.0f);
+        return lerp(1.0f, lerp(1.0f, powderEffect, smoothstep(0.5f, -0.5f, cosAngle)), intensity);
+    }
+#endif // UNUSED
+
     // Function that evaluates the cloud properties at a given absolute world space position
-    private void EvaluateCloudProperties(Vector3 positionPS, float noiseMipOffset, float erosionMipOffset, bool cheapVersion, bool lightSampling,
+    void EvaluateCloudProperties(float3 positionPS, float noiseMipOffset, float erosionMipOffset, bool cheapVersion, bool lightSampling,
                                 out CloudProperties properties)
     {
         // Initialize all the values to 0 in case
-        properties.density = 0.0f;
-        properties.ambientOcclusion = 0.0f;
-        properties.height = 0.0f;
-        properties.sigmaT = 0.0f;
+        properties = default;
 
         //#ifndef CLOUDS_SIMPLE_PRESET
         // When using a cloud map, we cannot support the full planet due to UV issues
         //#endif
 
         // Remove global clouds below the horizon
-        if (!_LOCAL_VOLUMETRIC_CLOUDS && positionPS.y < _EarthRadius)
+        if (!_LOCAL_VOLUMETRIC_CLOUDS
+            && positionPS.y < _EarthRadius)
             return;
 
         // By default the ambient occlusion is 1.0
@@ -388,18 +452,17 @@ public class VolumetricCloudsUtilities : MonoBehaviour
         */
 
         // Evaluate the generic sampling coordinates
-        Vector3 animatePosPS = AnimateShapeNoisePosition(positionPS);
-        animatePosPS = new Vector3(animatePosPS.x, animatePosPS.z, animatePosPS.y) / NOISE_TEXTURE_NORMALIZATION_FACTOR;
-        Vector3 baseNoiseSamplingCoordinates = animatePosPS * _ShapeScale - new Vector3(_ShapeNoiseOffset.x, _ShapeNoiseOffset.y, _VerticalShapeNoiseOffset);
+        float3 baseNoiseSamplingCoordinates = float3(AnimateShapeNoisePosition(positionPS).xzy / NOISE_TEXTURE_NORMALIZATION_FACTOR) * _ShapeScale - float3(_ShapeNoiseOffset.x, _ShapeNoiseOffset.y, _VerticalShapeNoiseOffset);
 
         // Evaluate the coordinates at which the noise will be sampled and apply wind displacement
-        baseNoiseSamplingCoordinates += _AltitudeDistortion * properties.height * new Vector3(_WindDirection.x, _WindDirection.y, 0.0f);
+        baseNoiseSamplingCoordinates += _AltitudeDistortion * properties.height * float3(_WindDirection.x, _WindDirection.y, 0.0f);
 
         // Read the low frequency Perlin-Worley and Worley noises
-        float lowFrequencyNoise = SAMPLE_TEXTURE3D_LOD(_Worley128RGBA, s_trilinear_repeat_sampler, baseNoiseSamplingCoordinates, noiseMipOffset).x;
+        float lowFrequencyNoise = SAMPLE_TEXTURE3D_LOD(_Worley128RGBA, s_trilinear_repeat_sampler, baseNoiseSamplingCoordinates, noiseMipOffset);
 
         // Evaluate the cloud coverage data for this position
-        GetCloudCoverageData(positionPS, out CloudCoverageData cloudCoverageData);
+        CloudCoverageData cloudCoverageData;
+        GetCloudCoverageData(positionPS, out cloudCoverageData);
 
         // If this region of space has no cloud coverage, exit right away
         if (cloudCoverageData.coverage <= CLOUD_DENSITY_TRESHOLD || cloudCoverageData.maxCloudHeight < properties.height)
@@ -407,7 +470,7 @@ public class VolumetricCloudsUtilities : MonoBehaviour
 
         // Read from the LUT
         //#if defined(CLOUDS_SIMPLE_PRESET)
-        Vector3 densityErosionAO = SAMPLE_TEXTURE2D_LOD(_CloudCurveTexture, s_linear_repeat_sampler, new Vector2(0.0f, properties.height), 0);
+        float3 densityErosionAO = SAMPLE_TEXTURE2D_LOD(_CloudCurveTexture, s_linear_repeat_sampler, float2(0.0f, properties.height), 0).xyz;
         //#else
         //half3 densityErosionAO = SAMPLE_TEXTURE2D_LOD(_CloudLutTexture, s_linear_repeat_sampler, float2(cloudCoverageData.cloudType, properties.height), CLOUD_LUT_MIP_OFFSET).xyz;
         //#endif
@@ -439,16 +502,16 @@ public class VolumetricCloudsUtilities : MonoBehaviour
         if (!cheapVersion)
         {
             //float erosionMipOffset = 0.5f;
-            Vector3 erosionCoords = AnimateErosionNoisePosition(positionPS) / (NOISE_TEXTURE_NORMALIZATION_FACTOR * _ErosionScale);
-            float erosionNoise = 1.0f - SAMPLE_TEXTURE3D_LOD(_ErosionNoise, s_linear_repeat_sampler, erosionCoords, CLOUD_DETAIL_MIP_OFFSET + erosionMipOffset).x;
+            float3 erosionCoords = AnimateErosionNoisePosition(positionPS) / (NOISE_TEXTURE_NORMALIZATION_FACTOR * _ErosionScale);
+            float erosionNoise = 1.0f - SAMPLE_TEXTURE3D_LOD(_ErosionNoise, s_linear_repeat_sampler, erosionCoords, CLOUD_DETAIL_MIP_OFFSET + erosionMipOffset);
             erosionNoise = lerp(0.0f, erosionNoise, erosionFactor * 0.75f * cloudCoverageData.coverage);
             properties.ambientOcclusion = saturate(properties.ambientOcclusion - sqrt(erosionNoise * _ErosionOcclusion));
             base_cloud = DensityRemap(base_cloud, erosionNoise, 1.0f, 0.0f, 1.0f);
 
             if (_CLOUDS_MICRO_EROSION)
             {
-                Vector3 fineCoords = AnimateErosionNoisePosition(positionPS) / (NOISE_TEXTURE_NORMALIZATION_FACTOR * _MicroErosionScale);
-                float fineNoise = 1.0f - SAMPLE_TEXTURE3D_LOD(_ErosionNoise, s_linear_repeat_sampler, fineCoords, CLOUD_DETAIL_MIP_OFFSET + erosionMipOffset).x;
+                float3 fineCoords = AnimateErosionNoisePosition(positionPS) / (NOISE_TEXTURE_NORMALIZATION_FACTOR * _MicroErosionScale);
+                float fineNoise = 1.0f - SAMPLE_TEXTURE3D_LOD(_ErosionNoise, s_linear_repeat_sampler, fineCoords, CLOUD_DETAIL_MIP_OFFSET + erosionMipOffset);
                 fineNoise = lerp(0.0f, fineNoise, microDetailFactor * 0.5f * cloudCoverageData.coverage);
                 base_cloud = DensityRemap(base_cloud, fineNoise, 1.0f, 0.0f, 1.0f);
             }
@@ -461,36 +524,39 @@ public class VolumetricCloudsUtilities : MonoBehaviour
         properties.density = base_cloud * _DensityMultiplier;        
     }
 
-    private RayHit TraceCloudsRay(in Ray ray)
+    VolumetricRayResult TraceVolumetricRay(in CloudRay cloudRay)
     {
-        RayHit rayHit;
-        rayHit.inScattering = new(0.0f, 0.0f, 0.0f);
-        rayHit.transmittance = 1.0f;
-        rayHit.meanDistance = FLT_MAX;
-        rayHit.invalidRay = true;
+        VolumetricRayResult volumetricRay;
+        volumetricRay.scattering = default;
+        volumetricRay.transmittance = 1.0f;
+        volumetricRay.meanDistance = FLT_MAX;
+        volumetricRay.invalidRay = true;
 
         // Determine if ray intersects bounding volume, if the ray does not intersect the cloud volume AABB, skip right away
-        if (GetCloudVolumeIntersection(ray.originWS, ray.direction, out RayMarchRange rayMarchRange))
+        RayMarchRange rayMarchRange;
+        if (GetCloudVolumeIntersection(cloudRay.originWS, half3(cloudRay.direction), out rayMarchRange))
         {
-            if (ray.maxRayLength >= rayMarchRange.start)
+            if (cloudRay.maxRayLength >= rayMarchRange.start)
             {
                 // Initialize the depth for accumulation
-                rayHit.meanDistance = 0.0f;
+                volumetricRay.meanDistance = 0.0f;
 
                 // Total distance that the ray must travel including empty spaces
                 // Clamp the travel distance to whatever is closer
                 // - Sky Occluder
                 // - Volume end
                 // - Far plane
-                float totalDistance = min(rayMarchRange.end, ray.maxRayLength) - rayMarchRange.start;
+                float totalDistance = min(rayMarchRange.end, cloudRay.maxRayLength) - rayMarchRange.start;
 
                 // Evaluate our integration step
                 float stepS = min(totalDistance / (float)_NumPrimarySteps, _MaxStepSize);
                 totalDistance = stepS * _NumPrimarySteps;
 
                 // Compute the environment lighting that is going to be used for the cloud evaluation
-                //Vector3 rayMarchStartPS = ConvertToPS(ray.originWS) + rayMarchRange.start * ray.direction;
-                //Vector3 rayMarchEndPS = rayMarchStartPS + totalDistance * ray.direction;
+                /*
+                float3 rayMarchStartPS = ConvertToPS(cloudRay.originWS) + rayMarchRange.start * cloudRay.direction;
+                float3 rayMarchEndPS = rayMarchStartPS + totalDistance * cloudRay.direction;
+                */
 
                 // Tracking the number of steps that have been made
                 int currentIndex = 0;
@@ -499,8 +565,8 @@ public class VolumetricCloudsUtilities : MonoBehaviour
                 float meanDistanceDivider = 0.0f;
 
                 // Current position for the evaluation, apply blue noise to start position
-                float currentDistance = ray.integrationNoise;
-                Vector3 currentPositionWS = ray.originWS + (rayMarchRange.start + currentDistance) * ray.direction;
+                float currentDistance = cloudRay.integrationNoise;
+                float3 currentPositionWS = cloudRay.originWS + (rayMarchRange.start + currentDistance) * cloudRay.direction;
 
                 // Initialize the values for the optimized ray marching
                 bool activeSampling = true;
@@ -514,14 +580,15 @@ public class VolumetricCloudsUtilities : MonoBehaviour
                     // Compute the mip offset for the erosion texture
                     float erosionMipOffset = ErosionMipOffset(rayMarchRange.start + currentDistance);
 
+                    // Accumulate in WS and convert at each iteration to avoid precision issues
+                    float3 currentPositionPS = ConvertToPS(currentPositionWS);
+
                     // Should we be evaluating the clouds or just doing the large ray marching
                     if (activeSampling)
                     {
-                        // Convert to planet space
-                        Vector3 positionPS = ConvertToPS(currentPositionWS);
-
                         // If the density is null, we can skip as there will be no contribution
-                        EvaluateCloudProperties(positionPS, 0.0f, erosionMipOffset, false, false, out CloudProperties properties);
+                        CloudProperties properties;
+                        EvaluateCloudProperties(currentPositionPS, 0.0f, erosionMipOffset, false, false, out properties);
 
                         // Apply the fade in function to the density
                         properties.density *= densityAttenuationValue;
@@ -529,23 +596,23 @@ public class VolumetricCloudsUtilities : MonoBehaviour
                         if (properties.density > CLOUD_DENSITY_TRESHOLD)
                         {
                             // Contribute to the average depth (must be done first in case we end up inside a cloud at the next step)
-                            float transmitanceXdensity = rayHit.transmittance * properties.density;
-                            rayHit.meanDistance += (rayMarchRange.start + currentDistance) * transmitanceXdensity;
+                            float transmitanceXdensity = volumetricRay.transmittance * properties.density;
+                            volumetricRay.meanDistance += (rayMarchRange.start + currentDistance) * transmitanceXdensity;
                             meanDistanceDivider += transmitanceXdensity;
 
                             // Evaluate the cloud at the position
-                            //EvaluateCloud(properties, ray.direction, currentPositionWS, rayMarchStartPS, rayMarchEndPS, stepS, currentDistance / totalDistance, rayHit);
+                            //EvaluateCloud(properties, cloudRay.direction, currentPositionWS, rayMarchStartPS, rayMarchEndPS, stepS, currentDistance / totalDistance, volumetricRay);
                             // No lighting Version
                             {
                                 float extinction = properties.density * properties.sigmaT;
                                 float transmittance = exp(-extinction * stepS);
-                                rayHit.transmittance *= transmittance;
+                                volumetricRay.transmittance *= transmittance;
                             }
 
                             // if most of the energy is absorbed, just leave.
-                            if (rayHit.transmittance < 0.003f)
+                            if (volumetricRay.transmittance < 0.003f)
                             {
-                                rayHit.transmittance = 0.0f;
+                                volumetricRay.transmittance = 0.0f;
                                 break;
                             }
 
@@ -560,17 +627,15 @@ public class VolumetricCloudsUtilities : MonoBehaviour
                             activeSampling = false;
 
                         // Do the next step
-                        float relativeStepSize = lerp(ray.integrationNoise, 1.0f, saturate(currentIndex));
-                        currentPositionWS += relativeStepSize * stepS * ray.direction;
+                        float relativeStepSize = lerp(cloudRay.integrationNoise, 1.0f, saturate(currentIndex));
+                        currentPositionWS += stepS * relativeStepSize * cloudRay.direction;
                         currentDistance += stepS * relativeStepSize;
 
                     }
                     else
                     {
-                        // Convert to planet space
-                        Vector3 positionPS = ConvertToPS(currentPositionWS);
-
-                        EvaluateCloudProperties(positionPS, 1.0f, 0.0f, true, false, out CloudProperties properties);
+                        CloudProperties properties;
+                        EvaluateCloudProperties(currentPositionPS, 1.0f, 0.0f, true, false, out properties);
 
                         // Apply the fade in function to the density
                         properties.density *= densityAttenuationValue;
@@ -578,36 +643,41 @@ public class VolumetricCloudsUtilities : MonoBehaviour
                         // If the density is lower than our tolerance,
                         if (properties.density < CLOUD_DENSITY_TRESHOLD)
                         {
-                            currentPositionWS += 2.0f * stepS * ray.direction;
+                            currentPositionWS += stepS * 2.0f * cloudRay.direction;
                             currentDistance += stepS * 2.0f;
                         }
                         else
                         {
                             // Somewhere between this step and the previous clouds started
                             // We reset all the counters and enable active sampling
-                            currentPositionWS -= ray.direction * stepS;
+                            currentPositionWS -= cloudRay.direction * stepS;
                             currentDistance -= stepS;
+                            currentIndex -= 1;
                             activeSampling = true;
                             sequentialEmptySamples = 0;
                         }
                     }
+
                     currentIndex++;
                 }
 
                 // Normalized the depth we computed
-                if (rayHit.meanDistance == 0.0f)
-                    rayHit.invalidRay = true;
+                if (volumetricRay.meanDistance != 0.0f)
+                {
+                    volumetricRay.invalidRay = false;
+                    volumetricRay.meanDistance /= meanDistanceDivider;
+                }
                 else
                 {
-                    rayHit.meanDistance /= meanDistanceDivider;
-                    rayHit.invalidRay = false;
+                    volumetricRay.invalidRay = true;
                 }
             }
         }
-        return rayHit;
+
+        return volumetricRay;
     }
 
-    private void UpdateCloudsProperties()
+    void UpdateCloudsProperties()
     {
         _ErosionNoise = (Texture3D)cloudsMaterial.GetTexture(erosionNoise);
         _Worley128RGBA = (Texture3D)cloudsMaterial.GetTexture(worleyNoise);
@@ -642,8 +712,11 @@ public class VolumetricCloudsUtilities : MonoBehaviour
     
         _FadeInStart = cloudsMaterial.GetFloat(fadeInStart);
         _FadeInDistance = cloudsMaterial.GetFloat(fadeInDistance);
+#if _CONST_EARTH_RADIUS
+#else
         _EarthRadius = cloudsMaterial.GetFloat(earthRadius);
-        _PlanetCenterPosition = new Vector3(0.0f, -_EarthRadius, 0.0f);
+#endif // _CONST_EARTH_RADIUS
+        _PlanetCenterPosition = new float3(0.0f, -_EarthRadius, 0.0f);
     }
 
     /// <summary>
@@ -654,29 +727,29 @@ public class VolumetricCloudsUtilities : MonoBehaviour
     /// <returns>
     /// The cloud density along the ray.
     /// </returns>
-    public float QueryCloudsRay(Vector3 startPosWS, Vector3 directionWS)
+    public float QueryCloudsRay(float3 startPosWS, float3 directionWS)
     {
         if (cloudsMaterial == null)
             return 0.0f;
 
         UpdateCloudsProperties();
 
-        Ray ray;
+        CloudRay ray;
         ray.originWS = startPosWS;
         ray.direction = directionWS;
         ray.maxRayLength = MAX_SKYBOX_VOLUMETRIC_CLOUDS_DISTANCE;
         ray.integrationNoise = 0.0f;
 
-        RayHit rayHit = TraceCloudsRay(in ray);
+        VolumetricRayResult volumetricRay = TraceVolumetricRay(in ray);
 
-        return rayHit.invalidRay ? 0.0f : 1.0f - rayHit.transmittance;
+        return volumetricRay.invalidRay ? 0.0f : 1.0f - volumetricRay.transmittance;
     }
 
     // An example of query clouds density
     /*private void Update()
     {
-        Vector3 startPosWS = new Vector3(0.0f, 0.0f, 0.0f);
-        Vector3 directionWS = new Vector3(0.0f, 1.0f, 0.0f); // make sure it's normalized
+        float3 startPosWS = new float3(0.0f, 0.0f, 0.0f);
+        float3 directionWS = new float3(0.0f, 1.0f, 0.0f); // make sure it's normalized
         float density = QueryCloudsRay(startPosWS , directionWS);
 
         Debug.Log(density);

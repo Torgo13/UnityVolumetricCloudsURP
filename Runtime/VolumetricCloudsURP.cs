@@ -506,7 +506,10 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 #endif // OPTIMISATION
 
         private Texture2D customLutPresetMap;
+#if OPTIMISATION
+#else
         private readonly Color[] customLutColorArray = new Color[customLutMapResolution];
+#endif // OPTIMISATION
 
         public const float earthRad = 6378100.0f;
         public const float windNormalizationFactor = 100000.0f; // NOISE_TEXTURE_NORMALIZATION_FACTOR in "VolumetricCloudsUtilities.hlsl"
@@ -708,12 +711,20 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 customLutPresetMap.hideFlags = HideFlags.HideAndDontSave;
             }
 
+#if OPTIMISATION
+            var pixels = customLutPresetMap.GetPixelData<half4>(mipLevel: 0);
+#else
             var pixels = customLutColorArray;
+#endif // OPTIMISATION
 
             var densityCurve = clouds.densityCurve.value;
             var erosionCurve = clouds.erosionCurve.value;
             var ambientOcclusionCurve = clouds.ambientOcclusionCurve.value;
+#if OPTIMISATION
+            var white = new half4((half)1, (half)1, (half)1, (half)1);
+#else
             Color white = Color.white;
+#endif // OPTIMISATION
             if (densityCurve == null || densityCurve.length == 0)
             {
                 for (int i = 0; i < customLutMapResolution; i++)
@@ -729,11 +740,18 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                     float density = (i == 0 || i == customLutMapResolution - 1) ? 0 : Mathf.Clamp(densityCurve.Evaluate(currTime), 0.0f, 1.0f);
                     float erosion = Mathf.Clamp(erosionCurve.Evaluate(currTime), 0.0f, 1.0f);
                     float ambientOcclusion = Mathf.Clamp(1.0f - ambientOcclusionCurve.Evaluate(currTime), 0.0f, 1.0f);
+#if OPTIMISATION
+                    pixels[i] = new half4((half)density, (half)erosion, (half)ambientOcclusion, (half)1);
+#else
                     pixels[i] = new Color(density, erosion, ambientOcclusion, 1.0f);
+#endif // OPTIMISATION
                 }
             }
 
+#if OPTIMISATION
+#else
             customLutPresetMap.SetPixels(pixels);
+#endif // OPTIMISATION
             customLutPresetMap.Apply();
 
             cloudsMaterial.SetTexture(cloudsCurveLut, customLutPresetMap);
@@ -1252,7 +1270,10 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         private readonly RendererListHandle[] rendererListHandles = new RendererListHandle[6];
 #endif
 
+#if OPTIMISATION
+#else
         private readonly Matrix4x4[] skyViewMatrices = new Matrix4x4[6];
+#endif // OPTIMISATION
 
         private static readonly Matrix4x4 skyProjectionMatrix = Matrix4x4.Perspective(90.0f, 1.0f, 0.1f, 10.0f);
         private static readonly Vector4 skyViewScreenParams = new Vector4(16.0f, 16.0f, 1.0f + rcp(16.0f), 1.0f + rcp(16.0f));
@@ -1322,22 +1343,20 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 const Unity.Collections.NativeArrayOptions options = Unity.Collections.NativeArrayOptions.UninitializedMemory;
 
                 var skyViewsNative = new Unity.Collections.NativeArray<Matrix4x4>(length, allocator, options);
-                var skyViewMatricesNative = new Unity.Collections.NativeArray<Matrix4x4>(length, allocator, options);
+                var skyViewMatrices = new Unity.Collections.NativeArray<Matrix4x4>(length, allocator, options);
                 var skyMatrixVPInverse = new Unity.Collections.NativeArray<Matrix4x4>(length, allocator, options);
 
                 skyViewsNative.CopyFrom(skyViews);
-                skyViewMatricesNative.CopyFrom(skyViewMatrices);
 
                 var skyMatrixVPInverseJob = new SkyMatrixVPInverseJob
                 {
                     skyMatrixP = skyMatrixP,
                     skyViews = skyViewsNative.Reinterpret<float4x4>(),
-                    skyViewMatrices = skyViewMatricesNative.Reinterpret<float4x4>(),
+                    skyViewMatrices = skyViewMatrices.Reinterpret<float4x4>(),
                     skyMatrixVPInverse = skyMatrixVPInverse.Reinterpret<float4x4>(),
                 };
 
                 Unity.Jobs.IJobForExtensions.Run(skyMatrixVPInverseJob, length);
-                skyViewMatricesNative.CopyTo(skyViewMatrices);
 #endif // OPTIMISATION
 
                 cmd.SetGlobalVector(worldSpaceCameraPos, Vector3.zero);
@@ -1376,7 +1395,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 }
 
 #if OPTIMISATION
-                skyViewMatricesNative.Dispose();
+                skyViewMatrices.Dispose();
                 skyMatrixVPInverse.Dispose();
 #endif // OPTIMISATION
 
@@ -1424,7 +1443,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             }
         }
 #endif // OPTIMISATION
-        #endregion
+#endregion
 
 #if UNITY_6000_0_OR_NEWER
         #region Render Graph Pass
