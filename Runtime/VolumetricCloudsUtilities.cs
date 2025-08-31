@@ -2,6 +2,7 @@
 #define _CONST_EARTH_RADIUS
 
 using Unity.Burst;
+using Unity.Burst.CompilerServices;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -1180,10 +1181,12 @@ public class VolumetricCloudsUtilities
 
         #region static
         [System.Runtime.CompilerServices.MethodImpl(256)]
-        static float3 ConvertToPS(in float3 x, in float3 _PlanetCenterPosition) => (x - _PlanetCenterPosition);
+        static float3 ConvertToPS(in float3 x, in float3 _PlanetCenterPosition) => x - _PlanetCenterPosition;
 
         [System.Runtime.CompilerServices.MethodImpl(256)]
-        static float SAMPLE_TEXTURE3D_LOD(in NativeArray<byte> tex3D, in float3 texCoord, int width, int height)
+        static float SAMPLE_TEXTURE3D_LOD(in NativeArray<byte> tex3D, in float3 texCoord,
+            [AssumeRange(1, int.MaxValue)] int width,
+            [AssumeRange(1, int.MaxValue)] int height)
         {
             int depth = tex3D.Length / (width * height);
             byte r = tex3D[
@@ -1196,7 +1199,8 @@ public class VolumetricCloudsUtilities
         }
 
         [System.Runtime.CompilerServices.MethodImpl(256)]
-        static float3 SAMPLE_TEXTURE2D_LOD(in NativeArray<half4> tex2D, float texCoordy, int width)
+        static float3 SAMPLE_TEXTURE2D_LOD(in NativeArray<half4> tex2D, float texCoordy,
+            [AssumeRange(1, int.MaxValue)] int width)
         {
             int height = tex2D.Length / width;
             half4 c = tex2D[mod((int)(texCoordy * height), height) * width];
@@ -1204,15 +1208,12 @@ public class VolumetricCloudsUtilities
         }
 
 #pragma warning disable IDE1006 // Naming Styles
+        /// <see href="https://stackoverflow.com/a/74552262"/>
         [System.Runtime.CompilerServices.MethodImpl(256)]
-        static int mod(int a, int b)
+        [return: AssumeRange(0, int.MaxValue)]
+        static int mod(int a, [AssumeRange(1, int.MaxValue)] int b)
         {
-            while (a < 0)
-            {
-                a += b;
-            }
-
-            return a % b;
+            return (a % b + b) % b;
         }
 #pragma warning restore IDE1006 // Naming Styles
         #endregion // static
