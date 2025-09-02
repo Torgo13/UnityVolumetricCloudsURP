@@ -801,23 +801,52 @@ public class VolumetricCloudsUtilities
 
     #region Burst
     /// <inheritdoc cref="QueryCloudsRay(Unity.Mathematics.float3, Unity.Mathematics.float3)"/>
-    public JobHandle QueryCloudsRay(float3 startPosWS, float3 directionWS, NativeArray<float> result,
-        JobHandle dependsOn = default)
+    /// <param name="results">The results array must have been created with at least
+    /// as many elements as the input NativeArrays. It cannot use <see cref="Unity.Collections.Allocator.Temp"/>.</param>
+    public JobHandle QueryCloudsRay(float3 startPosWS, float3 directionWS, NativeArray<float> results,
+        JobHandle dependency = default)
     {
-        CloudRay ray;
-        ray.originWS = startPosWS;
-        ray.direction = directionWS;
-        ray.maxRayLength = MAX_SKYBOX_VOLUMETRIC_CLOUDS_DISTANCE;
-        ray.integrationNoise = 0.0f;
+        var startPosWSArray = new NativeArray<float3>(1, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+        var directionWSArray = new NativeArray<float3>(1, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
 
-        //NativeArray<float> result = new NativeArray<float>(1, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-        UnityEngine.Assertions.Assert.IsTrue(result.IsCreated);
-        UnityEngine.Assertions.Assert.IsTrue(result.Length > 0, "result must have a Length of at least one to store the result.");
-        UnityEngine.Assertions.Assert.AreApproximatelyEqual(1f, ((Vector3)directionWS).magnitude, "directionWS must be normalised.");
+        startPosWSArray[0] = startPosWS;
+        directionWSArray[0] = directionWS;
+
+        return QueryCloudsRay(startPosWSArray, directionWSArray, results, dependency);
+    }
+
+    /// <inheritdoc cref="QueryCloudsRay(Unity.Mathematics.float3, Unity.Mathematics.float3, Unity.Collections.NativeArray{float}, Unity.Jobs.JobHandle)"/>
+    /// <remarks><paramref name="startPosWS"/> and <paramref name="directionWS"/> will be automatically disposed.</remarks>
+    public JobHandle QueryCloudsRay(NativeArray<float3> startPosWS, NativeArray<float3> directionWS, NativeArray<float> results,
+        JobHandle dependency = default)
+    {
+        UnityEngine.Assertions.Assert.IsTrue(startPosWS.IsCreated);
+        UnityEngine.Assertions.Assert.IsTrue(directionWS.IsCreated);
+        UnityEngine.Assertions.Assert.IsTrue(results.IsCreated);
+
+        UnityEngine.Assertions.Assert.AreEqual(startPosWS.Length, directionWS.Length);
+        UnityEngine.Assertions.Assert.IsTrue(results.Length >= startPosWS.Length, "results must contain at least as many elements as the input NativeArrays.");
+
+        var cloudRay = new NativeArray<CloudRay>(startPosWS.Length, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+        for (int i = 0; i < cloudRay.Length; i++)
+        {
+            UnityEngine.Assertions.Assert.AreApproximatelyEqual(1f, ((Vector3)directionWS[i]).magnitude, "directionWS must be normalised.");
+
+            cloudRay[i] = new CloudRay
+            {
+                originWS = startPosWS[i],
+                direction = directionWS[i],
+                maxRayLength = MAX_SKYBOX_VOLUMETRIC_CLOUDS_DISTANCE,
+                integrationNoise = default,
+            };
+        }
+
+        startPosWS.Dispose();
+        directionWS.Dispose();
 
         var traceVolumetricRayHandle = new TraceVolumetricRayJob
         {
-            cloudRay = ray,
+            cloudRay = cloudRay,
 
             _PlanetCenterPosition = _PlanetCenterPosition,
             _AltitudeDistortion = _AltitudeDistortion,
@@ -860,16 +889,17 @@ public class VolumetricCloudsUtilities
             _CloudCurveTexture = _CloudCurveTexture.GetPixelData<half4>(mipLevel: 0),
             _CloudCurveTextureWidth = _CloudCurveTexture.width,
 
-            result = result,
+            results = results,
         };
 
-        return traceVolumetricRayHandle.Schedule(dependsOn);
+        return traceVolumetricRayHandle.Schedule(cloudRay.Length, dependency);
     }
 
     [BurstCompile]
-    struct TraceVolumetricRayJob : IJob
+    struct TraceVolumetricRayJob : IJobFor
     {
-        [ReadOnly] public CloudRay cloudRay;
+        [DeallocateOnJobCompletion]
+        [ReadOnly] public NativeArray<CloudRay> cloudRay;
 
         [ReadOnly] public float3 _PlanetCenterPosition;
         [ReadOnly] public float _AltitudeDistortion;
@@ -909,16 +939,20 @@ public class VolumetricCloudsUtilities
         [ReadOnly] public int _ErosionNoiseWidth;
         [ReadOnly] public int _ErosionNoiseHeight;
 
+        // Allow _CloudCurveTexture to be accessed from a background thread
+        // while PrepareCustomLutData() is writing to it
+        [Unity.Collections.LowLevel.Unsafe.NativeDisableContainerSafetyRestriction]
         [ReadOnly] public NativeArray<half4> _CloudCurveTexture;
         [ReadOnly] public int _CloudCurveTextureWidth;
 
-        [WriteOnly] public NativeArray<float> result;
+        [WriteOnly] public NativeArray<float> results;
 
-        public void Execute()
+        public void Execute(int index)
         {
-            TraceVolumetricRay(in cloudRay, out var volumetricRay);
+            CloudRay ray = cloudRay[index];
+            TraceVolumetricRay(in ray, out var volumetricRay);
 
-            result[0] = volumetricRay.invalidRay ? 0.0f : 1.0f - volumetricRay.transmittance;
+            results[index] = volumetricRay.invalidRay ? 0.0f : 1.0f - volumetricRay.transmittance;
         }
 
         #region readonly
