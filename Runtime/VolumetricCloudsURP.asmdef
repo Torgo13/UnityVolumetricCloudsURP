@@ -25,6 +25,11 @@
             "name": "cn.unity.physical-light-unit",
             "expression": "0.0.1",
             "define": "URP_PHYSICAL_LIGHT"
+        },
+        {
+            "name": "com.unity.burst",
+            "expression": "1.0.0",
+            "define": "ENABLE_BURST_1_0_0_OR_NEWER"
         }
     ],
     "noEngineReferences": false

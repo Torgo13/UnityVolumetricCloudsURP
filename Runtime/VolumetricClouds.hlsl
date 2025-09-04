@@ -86,8 +86,11 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
             {
                 // Compute the camera-distance based attenuation
                 float densityAttenuationValue = DensityFadeValue(rayMarchRange.start + currentDistance);
+
+#if 0
                 // Compute the mip offset for the erosion texture
                 float erosionMipOffset = ErosionMipOffset(rayMarchRange.start + currentDistance);
+#endif // 0
 
                 // Accumulate in WS and convert at each iteration to avoid precision issues
                 float3 currentPositionPS = ConvertToPS(currentPositionWS);
@@ -95,6 +98,12 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
                 // Should we be evaluating the clouds or just doing the large ray marching
                 if (activeSampling)
                 {
+#if 0
+#else
+                    // Compute the mip offset for the erosion texture
+                    float erosionMipOffset = ErosionMipOffset(rayMarchRange.start + currentDistance);
+#endif // 0
+
                     // If the density is null, we can skip as there will be no contribution
                     CloudProperties properties;
                     EvaluateCloudProperties(currentPositionPS, 0.0, erosionMipOffset, false, false, properties);

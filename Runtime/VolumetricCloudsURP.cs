@@ -383,7 +383,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
     }
 
 #if OPTIMISATION
-    [Unity.Burst.BurstCompile]
+#if ENABLE_BURST_1_0_0_OR_NEWER
+    [Unity.Burst.BurstCompile(FloatMode = Unity.Burst.FloatMode.Fast)]
+#endif // ENABLE_BURST_1_0_0_OR_NEWER
 #endif // OPTIMISATION
     public class VolumetricCloudsPass : ScriptableRenderPass
     {
@@ -721,7 +723,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             var erosionCurve = clouds.erosionCurve.value;
             var ambientOcclusionCurve = clouds.ambientOcclusionCurve.value;
 #if OPTIMISATION
-            var white = new half4((half)1, (half)1, (half)1, (half)1);
+            var white = new half4(1);
 #else
             Color white = Color.white;
 #endif // OPTIMISATION
@@ -810,7 +812,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         }
 
 #if OPTIMISATION
-        [Unity.Burst.BurstCompile]
+#if ENABLE_BURST_1_0_0_OR_NEWER
+        [Unity.Burst.BurstCompile(FloatMode = Unity.Burst.FloatMode.Fast)]
+#endif // ENABLE_BURST_1_0_0_OR_NEWER
         private static float GetCloudNearPlane(in Vector3 originPS, float lowerBoundPS, float higherBoundPS)
 #else
         private static float GetCloudNearPlane(Vector3 originPS, float lowerBoundPS, float higherBoundPS)
@@ -1422,7 +1426,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         }
 
 #if OPTIMISATION
-        [Unity.Burst.BurstCompile]
+#if ENABLE_BURST_1_0_0_OR_NEWER
+        [Unity.Burst.BurstCompile(FloatMode = Unity.Burst.FloatMode.Fast)]
+#endif // ENABLE_BURST_1_0_0_OR_NEWER
         struct SkyMatrixVPInverseJob : Unity.Jobs.IJobFor
         {
             [Unity.Collections.ReadOnly]

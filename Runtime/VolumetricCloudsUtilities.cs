@@ -895,7 +895,9 @@ public class VolumetricCloudsUtilities
         return traceVolumetricRayHandle.Schedule(cloudRay.Length, dependency);
     }
 
-    [BurstCompile]
+#if ENABLE_BURST_1_0_0_OR_NEWER
+    [BurstCompile(FloatMode = FloatMode.Fast)]
+#endif // ENABLE_BURST_1_0_0_OR_NEWER
     struct TraceVolumetricRayJob : IJobFor
     {
         [DeallocateOnJobCompletion]
