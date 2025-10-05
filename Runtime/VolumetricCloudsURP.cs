@@ -493,16 +493,17 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         private static readonly Vector4 m_ScaleBias = new Vector4(1.0f, 1.0f, 0.0f, 0.0f);
 
 #if OPTIMISATION
-        private static readonly System.Linq.Expressions.ParameterExpression param
-            = System.Linq.Expressions.Expression.Parameter(typeof(UniversalRenderer), "instance");
-
-        private static readonly Func<UniversalRenderer, RTHandle> depthTextureDelegate
-            = System.Linq.Expressions.Expression.Lambda<Func<UniversalRenderer, RTHandle>>(
-                System.Linq.Expressions.Expression.Convert(
-                System.Linq.Expressions.Expression.Field(
+        private static Func<UniversalRenderer, RTHandle> _getDepthTexture;
+        private static Func<UniversalRenderer, RTHandle> GetDepthTexture => _getDepthTexture ??= GetDepthTextureDelegate();
+        private static Func<UniversalRenderer, RTHandle> GetDepthTextureDelegate()
+        {
+            var param = System.Linq.Expressions.Expression.Parameter(typeof(UniversalRenderer), "instance");
+            return System.Linq.Expressions.Expression.Lambda<Func<UniversalRenderer, RTHandle>>(
+                System.Linq.Expressions.Expression.Convert(System.Linq.Expressions.Expression.Field(
                 System.Linq.Expressions.Expression.Convert(param, typeof(UniversalRenderer)),
                 typeof(UniversalRenderer).GetField("m_DepthTexture", BindingFlags.NonPublic | BindingFlags.Instance)),
                 typeof(RTHandle)), param).Compile();
+        }
 #else
         private readonly static FieldInfo depthTextureFieldInfo = typeof(UniversalRenderer).GetField("m_DepthTexture", BindingFlags.NonPublic | BindingFlags.Instance);
 #endif // OPTIMISATION
@@ -955,7 +956,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                     // Using reflection to access the "_CameraDepthTexture" in compatibility mode
                     var renderer = renderingData.cameraData.renderer as UniversalRenderer;
 #if OPTIMISATION
-                    var cameraDepthHandle = depthTextureDelegate(renderer);
+                    var cameraDepthHandle = GetDepthTexture(renderer);
 #else
                     var cameraDepthHandle = depthTextureFieldInfo.GetValue(renderer) as RTHandle;
 #endif // OPTIMISATION
