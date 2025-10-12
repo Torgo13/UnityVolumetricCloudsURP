@@ -1347,11 +1347,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 const Unity.Collections.Allocator allocator = Unity.Collections.Allocator.TempJob;
                 const Unity.Collections.NativeArrayOptions options = Unity.Collections.NativeArrayOptions.UninitializedMemory;
 
-                var skyViewsNative = new Unity.Collections.NativeArray<Matrix4x4>(length, allocator, options);
+                var skyViewsNative = new Unity.Collections.NativeArray<Matrix4x4>(skyViews, allocator);
                 var skyViewMatrices = new Unity.Collections.NativeArray<Matrix4x4>(length, allocator, options);
                 var skyMatrixVPInverse = new Unity.Collections.NativeArray<Matrix4x4>(length, allocator, options);
-
-                skyViewsNative.CopyFrom(skyViews);
 
                 var skyMatrixVPInverseJob = new SkyMatrixVPInverseJob
                 {
@@ -1433,7 +1431,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         struct SkyMatrixVPInverseJob : Unity.Jobs.IJobFor
         {
             [Unity.Collections.ReadOnly]
-            public float4x4 skyMatrixP;
+            public Matrix4x4 skyMatrixP;
             [Unity.Collections.ReadOnly, Unity.Collections.DeallocateOnJobCompletion]
             public Unity.Collections.NativeArray<float4x4> skyViews;
 
