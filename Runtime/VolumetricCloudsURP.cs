@@ -1275,10 +1275,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         private readonly RendererListHandle[] rendererListHandles = new RendererListHandle[6];
 #endif
 
-#if OPTIMISATION
-#else
+#if UNITY_6000_0_OR_NEWER
         private readonly Matrix4x4[] skyViewMatrices = new Matrix4x4[6];
-#endif // OPTIMISATION
+#endif // UNITY_6000_0_OR_NEWER
 
         private static readonly Matrix4x4 skyProjectionMatrix = Matrix4x4.Perspective(90.0f, 1.0f, 0.1f, 10.0f);
         private static readonly Vector4 skyViewScreenParams = new Vector4(16.0f, 16.0f, 1.0f + rcp(16.0f), 1.0f + rcp(16.0f));
