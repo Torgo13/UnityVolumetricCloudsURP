@@ -840,6 +840,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         }
 
         #region Non Render Graph Pass
+#if URP_COMPATIBILITY_MODE
         private Light GetMainLight(LightData lightData)
         {
             int shadowLightIndex = lightData.mainLightIndex;
@@ -986,6 +987,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             cmd.Clear();
             CommandBufferPool.Release(cmd);
         }
+#endif // URP_COMPATIBILITY_MODE
         #endregion
 
 #if UNITY_6000_0_OR_NEWER
@@ -1289,6 +1291,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         }
 
         #region Non Render Graph Pass
+#if URP_COMPATIBILITY_MODE
 #if UNITY_6000_0_OR_NEWER
         [Obsolete]
 #endif
@@ -1447,7 +1450,8 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             }
         }
 #endif // OPTIMISATION
-#endregion
+#endif // URP_COMPATIBILITY_MODE
+        #endregion
 
 #if UNITY_6000_0_OR_NEWER
         #region Render Graph Pass
@@ -1654,6 +1658,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         }
 
         #region Non Render Graph Pass
+#if URP_COMPATIBILITY_MODE
         private Light GetMainLight(LightData lightData)
         {
             int shadowLightIndex = lightData.mainLightIndex;
@@ -1843,7 +1848,8 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             cmd.Clear();
             CommandBufferPool.Release(cmd);
         }
-#endregion
+#endif // URP_COMPATIBILITY_MODE
+        #endregion
 
 #if UNITY_6000_0_OR_NEWER
         #region Render Graph Pass

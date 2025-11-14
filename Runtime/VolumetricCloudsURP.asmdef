@@ -30,6 +30,11 @@
             "name": "com.unity.burst",
             "expression": "1.0.0",
             "define": "ENABLE_BURST_1_0_0_OR_NEWER"
+        },
+        {
+            "name": "com.unity.render-pipelines.universal",
+            "expression": "[1.0.0,14.0.12]",
+            "define": "URP_COMPATIBILITY_MODE"
         }
     ],
     "noEngineReferences": false
