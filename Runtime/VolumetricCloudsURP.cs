@@ -492,6 +492,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
         private static readonly Vector4 m_ScaleBias = new Vector4(1.0f, 1.0f, 0.0f, 0.0f);
 
+#if URP_COMPATIBILITY_MODE
 #if OPTIMISATION
         private static Func<UniversalRenderer, RTHandle> _getDepthTexture;
         private static Func<UniversalRenderer, RTHandle> GetDepthTexture => _getDepthTexture ??= GetDepthTextureDelegate();
@@ -507,6 +508,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 #else
         private readonly static FieldInfo depthTextureFieldInfo = typeof(UniversalRenderer).GetField("m_DepthTexture", BindingFlags.NonPublic | BindingFlags.Instance);
 #endif // OPTIMISATION
+#endif // URP_COMPATIBILITY_MODE
 
         private Texture2D customLutPresetMap;
 #if OPTIMISATION
@@ -1278,6 +1280,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 #endif
 
 #if UNITY_6000_0_OR_NEWER
+        static
         private readonly Matrix4x4[] skyViewMatrices = new Matrix4x4[6];
 #endif // UNITY_6000_0_OR_NEWER
 
@@ -1639,6 +1642,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         private static readonly int mainLightWorldToLight = Shader.PropertyToID("_MainLightWorldToLight");
         private static readonly int mainLightCookieTextureFormat = Shader.PropertyToID("_MainLightCookieTextureFormat");
 
+#if URP_COMPATIBILITY_MODE
 #if OPTIMISATION
         // Should we support colored shadows?
         private const GraphicsFormat singleChannel = GraphicsFormat.R16_UNorm; //option 2: R8_UNorm
@@ -1651,6 +1655,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 ? singleChannel
                 : GraphicsFormat.B10G11R11_UFloatPack32;
 #endif // OPTIMISATION
+#endif // URP_COMPATIBILITY_MODE
 
         public VolumetricCloudsShadowsPass(Material material)
         {
