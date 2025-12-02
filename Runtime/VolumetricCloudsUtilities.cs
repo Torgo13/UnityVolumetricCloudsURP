@@ -892,7 +892,7 @@ public class VolumetricCloudsUtilities
             results = results,
         };
 
-        return traceVolumetricRayHandle.Schedule(cloudRay.Length, dependency);
+        return traceVolumetricRayHandle.ScheduleByRef(cloudRay.Length, dependency);
     }
 
 #if ENABLE_BURST_1_0_0_OR_NEWER
