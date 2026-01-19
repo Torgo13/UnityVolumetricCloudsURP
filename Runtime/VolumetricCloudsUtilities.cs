@@ -156,6 +156,7 @@ public class VolumetricCloudsUtilities
         public
         float meanDistance;
         /// <summary>Flag that defines if the ray is valid or not</summary>
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.U1)]
         public
         bool invalidRay;
     };
@@ -806,8 +807,8 @@ public class VolumetricCloudsUtilities
     public JobHandle QueryCloudsRay(float3 startPosWS, float3 directionWS, NativeArray<float> results,
         JobHandle dependency = default)
     {
-        var startPosWSArray = new NativeArray<float3>(1, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-        var directionWSArray = new NativeArray<float3>(1, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+        var startPosWSArray = new NativeArray<float3>(1, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+        var directionWSArray = new NativeArray<float3>(1, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
 
         startPosWSArray[0] = startPosWS;
         directionWSArray[0] = directionWS;
@@ -828,21 +829,15 @@ public class VolumetricCloudsUtilities
         UnityEngine.Assertions.Assert.IsTrue(results.Length >= startPosWS.Length, "results must contain at least as many elements as the input NativeArrays.");
 
         var cloudRay = new NativeArray<CloudRay>(startPosWS.Length, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
-        for (int i = 0; i < cloudRay.Length; i++)
+
+        var cloudRayHandle = new CloudRayJob
         {
-            UnityEngine.Assertions.Assert.AreApproximatelyEqual(1f, ((Vector3)directionWS[i]).magnitude, "directionWS must be normalised.");
+            startPosWS = startPosWS,
+            directionWS = directionWS,
+            cloudRay = cloudRay,
+        };
 
-            cloudRay[i] = new CloudRay
-            {
-                originWS = startPosWS[i],
-                direction = directionWS[i],
-                maxRayLength = MAX_SKYBOX_VOLUMETRIC_CLOUDS_DISTANCE,
-                integrationNoise = default,
-            };
-        }
-
-        startPosWS.Dispose();
-        directionWS.Dispose();
+        dependency = cloudRayHandle.Schedule(cloudRay.Length, dependency);
 
         var traceVolumetricRayHandle = new TraceVolumetricRayJob
         {
@@ -898,8 +893,34 @@ public class VolumetricCloudsUtilities
 #if ENABLE_BURST_1_0_0_OR_NEWER
     [BurstCompile(FloatMode = FloatMode.Fast)]
 #endif // ENABLE_BURST_1_0_0_OR_NEWER
+    struct CloudRayJob : IJobFor
+    {
+        [ReadOnly][NativeMatchesParallelForLength][DeallocateOnJobCompletion] public NativeArray<float3> startPosWS;        
+        [ReadOnly][NativeMatchesParallelForLength][DeallocateOnJobCompletion] public NativeArray<float3> directionWS;
+        [WriteOnly][NativeMatchesParallelForLength] public NativeArray<CloudRay> cloudRay;
+
+        public void Execute(int index)
+        {
+#if ZERO
+            UnityEngine.Assertions.Assert.AreApproximatelyEqual(1f, ((Vector3)directionWS[index]).magnitude, "directionWS must be normalised.");
+#endif // ZERO
+
+            cloudRay[index] = new CloudRay
+            {
+                originWS = startPosWS[index],
+                direction = directionWS[index],
+                maxRayLength = MAX_SKYBOX_VOLUMETRIC_CLOUDS_DISTANCE,
+                integrationNoise = default,
+            };
+        }
+    }
+
+#if ENABLE_BURST_1_0_0_OR_NEWER
+    [BurstCompile(FloatMode = FloatMode.Fast)]
+#endif // ENABLE_BURST_1_0_0_OR_NEWER
     struct TraceVolumetricRayJob : IJobFor
     {
+        [NativeMatchesParallelForLength]
         [DeallocateOnJobCompletion]
         [ReadOnly] public NativeArray<CloudRay> cloudRay;
 
@@ -933,10 +954,12 @@ public class VolumetricCloudsUtilities
         [ReadOnly] public bool _CLOUDS_MICRO_EROSION;
         [ReadOnly] public bool _LOCAL_VOLUMETRIC_CLOUDS;
 
+        [NativeFixedLength(128 * 128 * 128)]
         [ReadOnly] public NativeArray<byte> _Worley128RGBA;
         [ReadOnly] public int _Worley128RGBAWidth;
         [ReadOnly] public int _Worley128RGBAHeight;
 
+        [NativeFixedLength(32 * 32 * 32)]
         [ReadOnly] public NativeArray<byte> _ErosionNoise;
         [ReadOnly] public int _ErosionNoiseWidth;
         [ReadOnly] public int _ErosionNoiseHeight;
@@ -947,6 +970,7 @@ public class VolumetricCloudsUtilities
         [ReadOnly] public NativeArray<half4> _CloudCurveTexture;
         [ReadOnly] public int _CloudCurveTextureWidth;
 
+        [NativeMatchesParallelForLength]
         [WriteOnly] public NativeArray<float> results;
 
         public void Execute(int index)

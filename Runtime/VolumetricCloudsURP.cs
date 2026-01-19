@@ -717,7 +717,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             }
 
 #if OPTIMISATION
-            var pixels = customLutPresetMap.GetPixelData<half4>(mipLevel: 0);
+            var pixels = customLutPresetMap.GetRawTextureData<half4>();
 #else
             var pixels = customLutColorArray;
 #endif // OPTIMISATION
@@ -1240,6 +1240,13 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             historyHandle?.Release();
             accumulateHandle?.Release();
             cameraTempDepthHandle?.Release();
+
+#if BUGFIX
+            if (customLutPresetMap != default)
+            {
+                Destroy(customLutPresetMap);
+            }
+#endif // BUGFIX
         }
         #endregion
     }
