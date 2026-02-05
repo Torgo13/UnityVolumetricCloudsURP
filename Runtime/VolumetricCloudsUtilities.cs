@@ -49,6 +49,8 @@ public class VolumetricCloudsUtilities
     private Texture3D _ErosionNoise;
     private Texture3D _Worley128RGBA;
     private Texture2D _CloudCurveTexture;
+    const int _ErosionNoiseWidth = 32;
+    const int _Worley128RGBAWidth = 128;
 
     // Shader Keywords
     private bool _LOCAL_VOLUMETRIC_CLOUDS;
@@ -828,6 +830,7 @@ public class VolumetricCloudsUtilities
         UnityEngine.Assertions.Assert.AreEqual(startPosWS.Length, directionWS.Length);
         UnityEngine.Assertions.Assert.IsTrue(results.Length >= startPosWS.Length, "results must contain at least as many elements as the input NativeArrays.");
 
+        // Deallocated in TraceVolumetricRayJob
         var cloudRay = new NativeArray<CloudRay>(startPosWS.Length, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
 
         var cloudRayHandle = new CloudRayJob
@@ -887,7 +890,7 @@ public class VolumetricCloudsUtilities
             results = results,
         };
 
-        return traceVolumetricRayHandle.ScheduleByRef(cloudRay.Length, dependency);
+        return traceVolumetricRayHandle.ScheduleParallelByRef(cloudRay.Length, innerloopBatchCount: 1, dependency);
     }
 
 #if ENABLE_BURST_1_0_0_OR_NEWER
@@ -908,8 +911,8 @@ public class VolumetricCloudsUtilities
             cloudRay[index] = new CloudRay
             {
                 originWS = startPosWS[index],
-                direction = directionWS[index],
                 maxRayLength = MAX_SKYBOX_VOLUMETRIC_CLOUDS_DISTANCE,
+                direction = directionWS[index],
                 integrationNoise = default,
             };
         }
@@ -954,12 +957,12 @@ public class VolumetricCloudsUtilities
         [ReadOnly] public bool _CLOUDS_MICRO_EROSION;
         [ReadOnly] public bool _LOCAL_VOLUMETRIC_CLOUDS;
 
-        [NativeFixedLength(128 * 128 * 128)]
+        [NativeFixedLength(VolumetricCloudsUtilities._Worley128RGBAWidth * VolumetricCloudsUtilities._Worley128RGBAWidth * VolumetricCloudsUtilities._Worley128RGBAWidth)]
         [ReadOnly] public NativeArray<byte> _Worley128RGBA;
         [ReadOnly] public int _Worley128RGBAWidth;
         [ReadOnly] public int _Worley128RGBAHeight;
 
-        [NativeFixedLength(32 * 32 * 32)]
+        [NativeFixedLength(VolumetricCloudsUtilities._ErosionNoiseWidth * VolumetricCloudsUtilities._ErosionNoiseWidth * VolumetricCloudsUtilities._ErosionNoiseWidth)]
         [ReadOnly] public NativeArray<byte> _ErosionNoise;
         [ReadOnly] public int _ErosionNoiseWidth;
         [ReadOnly] public int _ErosionNoiseHeight;

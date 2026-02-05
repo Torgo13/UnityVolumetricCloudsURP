@@ -1242,7 +1242,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             cameraTempDepthHandle?.Release();
 
 #if BUGFIX
-            if (customLutPresetMap != default)
+            if (customLutPresetMap != null)
             {
                 Destroy(customLutPresetMap);
             }
