@@ -362,7 +362,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 #if UNITY_EDITOR || DEBUG
                 else
                 {
-                    // URP may have stripped light cookie varients (in build), so skip the shadow cookie rendering
+                    // URP may have stripped light cookie variants (in build), so skip the shadow cookie rendering
                     if (!isCookiePrinted) { Debug.LogWarning("Volumetric Clouds URP: Light Cookies are disabled in the active URP asset. The volumetric clouds shadows will not be rendered."); isCookiePrinted = true; }
                 }
 #endif
@@ -1149,9 +1149,10 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 builder.UseTexture(rasterPassData.cameraDepthHandle, AccessFlags.Read);
 
                 builder.SetRenderAttachment(cloudsTextureHandle, 0);
+                builder.SetShadingRateFragmentSize(GetFragmentSize());
 
                 // Sets the render function.
-                builder.SetRenderFunc((RasterPassData rasterPassData, RasterGraphContext rgContext) => ExecuteRasterPass(rasterPassData, rgContext));
+                builder.SetRenderFunc(static (RasterPassData rasterPassData, RasterGraphContext rgContext) => ExecuteRasterPass(rasterPassData, rgContext));
             }
 
             // add an unsafe render pass to the render graph, specifying the name and the data type that will be passed to the ExecutePass function
@@ -1226,7 +1227,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 builder.UseTexture(passData.historyHandle, AccessFlags.ReadWrite);
 
                 // Assign the ExecutePass function to the render pass delegate, which will be called by the render graph when executing the pass
-                builder.SetRenderFunc((PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
+                builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
             }
         }
         #endregion
@@ -1543,8 +1544,10 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             {
                 // UniversalResourceData contains all the texture handles used by the renderer, including the active color and depth textures
                 // The active color and depth textures are the main color and depth buffers that the camera renders into
+#if ZERO
                 UniversalRenderingData universalRenderingData = frameData.Get<UniversalRenderingData>();
                 UniversalResourceData resourceData = frameData.Get<UniversalResourceData>();
+#endif // ZERO
                 UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
 
                 RenderTextureDescriptor desc = cameraData.cameraTargetDescriptor;
@@ -1594,7 +1597,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 builder.AllowGlobalStateModification(true);
 
                 // Assign the ExecutePass function to the render pass delegate, which will be called by the render graph when executing the pass
-                builder.SetRenderFunc((PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
+                builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
             }
         }
         #endregion
@@ -1927,8 +1930,10 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             UniversalLightData lightData = frameData.Get<UniversalLightData>();
+#if ZERO
             UniversalRenderingData universalRenderingData = frameData.Get<UniversalRenderingData>();
             UniversalResourceData resourceData = frameData.Get<UniversalResourceData>();
+#endif // ZERO
             UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
 
             // Get and update the main light
@@ -2073,7 +2078,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 builder.AllowGlobalStateModification(true);
 
                 // Assign the ExecutePass function to the render pass delegate, which will be called by the render graph when executing the pass
-                builder.SetRenderFunc((PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
+                builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
             }
         }
         #endregion
@@ -2142,5 +2147,17 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             intermediateShadowTextureHandle?.Release();
         }
         #endregion
+    }
+    
+    private static ShadingRateFragmentSize GetFragmentSize()
+    {
+        return ScalableBufferManager.widthScaleFactor switch
+        {
+            <= 0.25f => ShadingRateFragmentSize.FragmentSize1x1,
+            <= 0.4f => ShadingRateFragmentSize.FragmentSize1x2,
+            <= 0.6f => ShadingRateFragmentSize.FragmentSize2x2,
+            <= 0.8f => ShadingRateFragmentSize.FragmentSize2x4,
+            _ => ShadingRateFragmentSize.FragmentSize4x4,
+        };
     }
 }

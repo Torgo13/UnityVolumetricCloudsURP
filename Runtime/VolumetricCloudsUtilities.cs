@@ -11,6 +11,7 @@ using static Unity.Mathematics.math;
 
 // Run in edit mode for easier testing
 //[ExecuteInEditMode]
+sealed
 public class VolumetricCloudsUtilities
 {
     public VolumetricCloudsUtilities(Material cloudsMaterial)
@@ -49,8 +50,8 @@ public class VolumetricCloudsUtilities
     private Texture3D _ErosionNoise;
     private Texture3D _Worley128RGBA;
     private Texture2D _CloudCurveTexture;
-    const int _ErosionNoiseWidth = 32;
-    const int _Worley128RGBAWidth = 128;
+    const int ErosionNoiseWidth = 32;
+    const int Worley128RGBAWidth = 128;
 
     // Shader Keywords
     private bool _LOCAL_VOLUMETRIC_CLOUDS;
@@ -209,7 +210,7 @@ public class VolumetricCloudsUtilities
     }
 
 #if UNUSED
-    // Function that interects a ray with a sphere (optimized for very large sphere), returns up to two positives distances.
+    // Function that intersects a ray with a sphere (optimized for very large sphere), returns up to two positives distances.
 
     // numSolutions: 0, 1 or 2 positive solves
     // startWS: rayOriginWS, might be camera positionWS
@@ -706,15 +707,8 @@ public class VolumetricCloudsUtilities
                 }
 
                 // Normalized the depth we computed
-                if (volumetricRay.meanDistance != 0.0f)
-                {
-                    volumetricRay.invalidRay = false;
-                    volumetricRay.meanDistance /= meanDistanceDivider;
-                }
-                else
-                {
-                    volumetricRay.invalidRay = true;
-                }
+                volumetricRay.invalidRay = volumetricRay.meanDistance == 0.0f;
+                volumetricRay.meanDistance /= meanDistanceDivider;
             }
         }
 
@@ -913,7 +907,7 @@ public class VolumetricCloudsUtilities
                 originWS = startPosWS[index],
                 maxRayLength = MAX_SKYBOX_VOLUMETRIC_CLOUDS_DISTANCE,
                 direction = directionWS[index],
-                integrationNoise = default,
+                integrationNoise = 0,
             };
         }
     }
@@ -957,19 +951,19 @@ public class VolumetricCloudsUtilities
         [ReadOnly] public bool _CLOUDS_MICRO_EROSION;
         [ReadOnly] public bool _LOCAL_VOLUMETRIC_CLOUDS;
 
-        [NativeFixedLength(VolumetricCloudsUtilities._Worley128RGBAWidth * VolumetricCloudsUtilities._Worley128RGBAWidth * VolumetricCloudsUtilities._Worley128RGBAWidth)]
+        [NativeFixedLength(Worley128RGBAWidth * Worley128RGBAWidth * Worley128RGBAWidth)]
         [ReadOnly] public NativeArray<byte> _Worley128RGBA;
         [ReadOnly] public int _Worley128RGBAWidth;
         [ReadOnly] public int _Worley128RGBAHeight;
 
-        [NativeFixedLength(VolumetricCloudsUtilities._ErosionNoiseWidth * VolumetricCloudsUtilities._ErosionNoiseWidth * VolumetricCloudsUtilities._ErosionNoiseWidth)]
+        [NativeFixedLength(ErosionNoiseWidth * ErosionNoiseWidth * ErosionNoiseWidth)]
         [ReadOnly] public NativeArray<byte> _ErosionNoise;
         [ReadOnly] public int _ErosionNoiseWidth;
         [ReadOnly] public int _ErosionNoiseHeight;
 
         // Allow _CloudCurveTexture to be accessed from a background thread
         // while PrepareCustomLutData() is writing to it
-        [Unity.Collections.LowLevel.Unsafe.NativeDisableContainerSafetyRestriction]
+        [Unity.Collections.LowLevel.Unsafe.NativeDisableContainerSafetyRestriction, NoAlias]
         [ReadOnly] public NativeArray<half4> _CloudCurveTexture;
         [ReadOnly] public int _CloudCurveTextureWidth;
 
@@ -1243,19 +1237,22 @@ public class VolumetricCloudsUtilities
         #endregion // readonly
 
         #region static
+        const int minTextureSize = 1;
+        const int maxTextureSize = 16_384;
+
         [System.Runtime.CompilerServices.MethodImpl(256)]
         static float3 ConvertToPS(in float3 x, in float3 _PlanetCenterPosition) => x - _PlanetCenterPosition;
 
         [System.Runtime.CompilerServices.MethodImpl(256)]
         static float SAMPLE_TEXTURE3D_LOD(in NativeArray<byte> tex3D, in float3 texCoord,
-            [AssumeRange(1, int.MaxValue)] int width,
-            [AssumeRange(1, int.MaxValue)] int height)
+            [AssumeRange(minTextureSize, maxTextureSize)] int width,
+            [AssumeRange(minTextureSize, maxTextureSize)] int height)
         {
             int depth = tex3D.Length / (width * height);
             byte r = tex3D[
-                  mod((int)(texCoord.z * depth), depth) * width * height
-                + mod((int)(texCoord.y * height), height) * width
-                + mod((int)(texCoord.x * width), width)];
+                  mod(texCoord.z * depth, depth) * width * height
+                + mod(texCoord.y * height, height) * width
+                + mod(texCoord.x * width, width)];
 
             const float normaliseByte = 1f / byte.MaxValue;
             return r * normaliseByte;
@@ -1263,20 +1260,19 @@ public class VolumetricCloudsUtilities
 
         [System.Runtime.CompilerServices.MethodImpl(256)]
         static float3 SAMPLE_TEXTURE2D_LOD(in NativeArray<half4> tex2D, float texCoordy,
-            [AssumeRange(1, int.MaxValue)] int width)
+            [AssumeRange(minTextureSize, maxTextureSize)] int width)
         {
             int height = tex2D.Length / width;
-            half4 c = tex2D[mod((int)(texCoordy * height), height) * width];
-            return c.xyz;
+            return tex2D[mod(texCoordy * height, height) * width].xyz;
         }
 
 #pragma warning disable IDE1006 // Naming Styles
         /// <see href="https://stackoverflow.com/a/74552262"/>
         [System.Runtime.CompilerServices.MethodImpl(256)]
-        [return: AssumeRange(0, int.MaxValue)]
-        static int mod(int a, [AssumeRange(1, int.MaxValue)] int b)
+        [return: AssumeRange(0, maxTextureSize)]
+        static int mod(float a, [AssumeRange(minTextureSize, maxTextureSize)] int b)
         {
-            return (a % b + b) % b;
+            return ((int)a % b + b) % b;
         }
 #pragma warning restore IDE1006 // Naming Styles
         #endregion // static
