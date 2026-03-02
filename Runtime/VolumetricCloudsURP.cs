@@ -1100,7 +1100,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             UniversalLightData lightData = frameData.Get<UniversalLightData>();
 
             // add a raster render pass to the render graph, specifying the name and the data type that will be passed to the ExecuteRasterPass function
-            using (var builder = renderGraph.AddRasterRenderPass<RasterPassData>(rasterPassProfilerTag, out var rasterPassData))
+            using (var builder = renderGraph.AddRasterRenderPass<RasterPassData>(rasterPassProfilerTag, out var rasterPassData, m_ProfilingSampler))
             {
                 Light mainLight = GetMainLight(lightData);
                 UpdateClouds(mainLight, cameraData.camera);
@@ -1145,7 +1145,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
                 ConfigureInput(ScriptableRenderPassInput.Depth);
 
-                builder.UseTexture(rasterPassData.cameraColorHandle, AccessFlags.ReadWrite);
+                builder.UseTexture(rasterPassData.cameraColorHandle, AccessFlags.Read); // AccessFlags.ReadWrite
                 builder.UseTexture(rasterPassData.cameraDepthHandle, AccessFlags.Read);
 
                 builder.SetRenderAttachment(cloudsTextureHandle, 0);
@@ -1156,7 +1156,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             }
 
             // add an unsafe render pass to the render graph, specifying the name and the data type that will be passed to the ExecutePass function
-            using (var builder = renderGraph.AddUnsafePass<PassData>(profilerTag, out var passData))
+            using (var builder = renderGraph.AddUnsafePass<PassData>(profilerTag, out var passData, m_ProfilingSampler))
             {
                 // Get the active color texture through the frame data, and set it as the source texture for the blit
                 passData.cameraColorHandle = resourceData.activeColorTexture;
@@ -1173,16 +1173,15 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 desc.depthBufferBits = 0;
                 desc.colorFormat = cloudsHandleFormat;
 
-                TextureHandle accumulateHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, desc, name: _VolumetricCloudsAccumulationTexture, false, FilterMode.Point, TextureWrapMode.Clamp);
-                TextureHandle historyHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, desc, name: _VolumetricCloudsHistoryTexture, false, FilterMode.Point, TextureWrapMode.Clamp);
-
                 // Full resolution camera texture descriptor
                 RenderTextureDescriptor tempDepthDesc = desc;
                 TextureHandle cloudsTextureHandle = renderGraph.ImportTexture(cloudsColorHandle);
 
+#if UNUSED
                 builder.SetGlobalTextureAfterPass(cloudsTextureHandle, volumetricCloudsColorTexture);
                 builder.SetGlobalTextureAfterPass(cloudsTextureHandle, volumetricCloudsLightingTexture); // Same as "_VolumetricCloudsColorTexture"
-
+#endif // UNUSED
+                
                 if (outputDepth)
                 {
                     TextureHandle cloudsDepthTextureHandle = renderGraph.ImportTexture(cloudsDepthHandle);
@@ -1213,18 +1212,27 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 passData.hasAtmosphericScattering = hasAtmosphericScattering;
 
                 passData.cloudsColorHandle = cloudsTextureHandle;
-                passData.accumulateHandle = accumulateHandle;
-                passData.historyHandle = historyHandle;
+                if (passData.denoiseClouds)
+                {
+                    TextureHandle accumulateHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, desc, name: _VolumetricCloudsAccumulationTexture, false, FilterMode.Point, TextureWrapMode.Clamp);
+                    TextureHandle historyHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, desc, name: _VolumetricCloudsHistoryTexture, false, FilterMode.Point, TextureWrapMode.Clamp);
+                    passData.accumulateHandle = accumulateHandle;
+                    passData.historyHandle = historyHandle;
+                }
 
                 ConfigureInput(ScriptableRenderPassInput.Depth);
 
                 // UnsafePasses don't setup the outputs using UseTextureFragment/UseTextureFragmentDepth, you should specify your writes with UseTexture instead
-                builder.UseTexture(passData.cameraColorHandle, AccessFlags.ReadWrite);
+                builder.UseTexture(passData.cameraColorHandle, passData.denoiseClouds ? AccessFlags.ReadWrite : AccessFlags.Write);
                 builder.UseTexture(passData.activeDepthHandle, AccessFlags.None);
-                builder.UseTexture(passData.cameraDepthHandle, AccessFlags.Read);
-                builder.UseTexture(passData.cloudsColorHandle, AccessFlags.Write);
-                builder.UseTexture(passData.accumulateHandle, AccessFlags.Write);
-                builder.UseTexture(passData.historyHandle, AccessFlags.ReadWrite);
+                if (passData.outputToSceneDepth)
+                    builder.UseTexture(passData.cameraDepthHandle, AccessFlags.Read);
+                builder.UseTexture(passData.cloudsColorHandle, AccessFlags.None);
+                if (passData.denoiseClouds)
+                {
+                    builder.UseTexture(passData.accumulateHandle, AccessFlags.Write);
+                    builder.UseTexture(passData.historyHandle, AccessFlags.ReadWrite);
+                }
 
                 // Assign the ExecutePass function to the render pass delegate, which will be called by the render graph when executing the pass
                 builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
@@ -1540,7 +1548,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             // add an unsafe render pass to the render graph, specifying the name and the data type that will be passed to the ExecutePass function
-            using (var builder = renderGraph.AddUnsafePass<PassData>(profilerTag, out var passData))
+            using (var builder = renderGraph.AddUnsafePass<PassData>(profilerTag, out var passData, m_ProfilingSampler))
             {
                 // UniversalResourceData contains all the texture handles used by the renderer, including the active color and depth textures
                 // The active color and depth textures are the main color and depth buffers that the camera renders into
@@ -1868,6 +1876,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
 #if UNITY_6000_0_OR_NEWER
         #region Render Graph Pass
+        static
         private Light GetMainLight(UniversalLightData lightData)
         {
             int shadowLightIndex = lightData.mainLightIndex;
@@ -1955,7 +1964,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             var camera = cameraData.camera;
 
             // add an unsafe render pass to the render graph, specifying the name and the data type that will be passed to the ExecutePass function
-            using (var builder = renderGraph.AddUnsafePass<PassData>(profilerTag, out var passData))
+            using (var builder = renderGraph.AddUnsafePass<PassData>(profilerTag, out var passData, m_ProfilingSampler))
             {
                 // UniversalResourceData contains all the texture handles used by the renderer, including the active color and depth textures
                 // The active color and depth textures are the main color and depth buffers that the camera renders into
