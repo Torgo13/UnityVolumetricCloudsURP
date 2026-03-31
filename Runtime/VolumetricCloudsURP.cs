@@ -2157,7 +2157,8 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         }
         #endregion
     }
-    
+
+#if UNITY_6000_3_OR_NEWER
     private static ShadingRateFragmentSize GetFragmentSize()
     {
         return ScalableBufferManager.widthScaleFactor switch
@@ -2169,4 +2170,5 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             _ => ShadingRateFragmentSize.FragmentSize4x4,
         };
     }
+#endif // UNITY_6000_3_OR_NEWER
 }
