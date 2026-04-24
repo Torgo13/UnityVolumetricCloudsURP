@@ -60,12 +60,12 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
             // Evaluate our integration step
             float stepS = min(totalDistance / (float)_NumPrimarySteps, _MaxStepSize);
             totalDistance = stepS * _NumPrimarySteps;
-
+            
+#if 0
             // Compute the environment lighting that is going to be used for the cloud evaluation
-            /*
             float3 rayMarchStartPS = ConvertToPS(cloudRay.originWS) + rayMarchRange.start * cloudRay.direction;
             float3 rayMarchEndPS = rayMarchStartPS + totalDistance * cloudRay.direction;
-            */
+#endif // 0
 
             // Tracking the number of steps that have been made
             int currentIndex = 0;
@@ -140,7 +140,7 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
 
                     // Do the next step
                     float relativeStepSize = lerp(cloudRay.integrationNoise, 1.0, saturate(currentIndex));
-                    currentPositionWS += stepS * relativeStepSize * cloudRay.direction;
+                    currentPositionWS += cloudRay.direction * (stepS * relativeStepSize);
                     currentDistance += stepS * relativeStepSize;
 
                 }
@@ -155,7 +155,7 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
                     // If the density is lower than our tolerance,
                     if (properties.density < CLOUD_DENSITY_TRESHOLD)
                     {
-                        currentPositionWS += stepS * 2.0 * cloudRay.direction;
+                        currentPositionWS += cloudRay.direction * (stepS * 2.0);
                         currentDistance += stepS * 2.0;
                     }
                     else

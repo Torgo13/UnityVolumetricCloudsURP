@@ -2,7 +2,6 @@ Shader "Hidden/Sky/VolumetricClouds"
 {
     Properties
     {
-        //[HideInInspector][NoScaleOffset] _CloudLutTexture("Cloud LUT Texture", 2D) = "white" {}
         [HideInInspector][NoScaleOffset] _CloudLutTexture("Cloud LUT Texture", 2D) = "white" {}
         [HideInInspector][NoScaleOffset] _CloudCurveTexture("Cloud LUT Curve Texture", 2D) = "white" {}
         [NoScaleOffset] _ErosionNoise("Erosion Noise Texture", 3D) = "white" {}
@@ -415,7 +414,7 @@ Shader "Hidden/Sky/VolumetricClouds"
             #pragma fragment TraceVolumetricCloudsShadows
 
             #pragma target 3.5
-            
+
             TEXTURE2D(_CloudLutTexture);
             TEXTURE2D(_CloudCurveTexture);
             TEXTURE3D(_Worley128RGBA);
@@ -457,7 +456,7 @@ Shader "Hidden/Sky/VolumetricClouds"
             #pragma fragment FilterVolumetricCloudsShadow
 
             #pragma target 3.5
-            
+
             TEXTURE2D(_CloudLutTexture);
             TEXTURE2D(_CloudCurveTexture);
             TEXTURE3D(_Worley128RGBA);

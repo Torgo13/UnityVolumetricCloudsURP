@@ -61,7 +61,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
     // Pirnt message only once.
     private bool isLogPrinted = false;
+#if VC_SHADOWS
     private bool isCookiePrinted = false;
+#endif // VC_SHADOWS
 
     /// <summary>
     /// Gets or sets the material of volumetric clouds shader.
@@ -249,7 +251,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         if (volumetricCloudsPass == null)
         {
             volumetricCloudsPass = new(material, resolutionScale);
-            volumetricCloudsPass.renderPassEvent = RenderPassEvent.BeforeRenderingTransparents; // Use camera previous matrix to do reprojection
+            volumetricCloudsPass.renderPassEvent = RenderPassEvent.BeforeRenderingPrePasses; // Use camera previous matrix to do reprojection
         }
         else
         {
@@ -265,11 +267,13 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             volumetricCloudsAmbientPass.renderPassEvent = RenderPassEvent.BeforeRenderingTransparents - 1;
         }
 
+#if VC_SHADOWS
         if (volumetricCloudsShadowsPass == null)
         {
             volumetricCloudsShadowsPass = new(material);
             volumetricCloudsShadowsPass.renderPassEvent = RenderPassEvent.BeforeRendering;
         }
+#endif // VC_SHADOWS
     }
 
     protected override void Dispose(bool disposing)
@@ -278,8 +282,10 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             volumetricCloudsPass.Dispose();
         if (volumetricCloudsAmbientPass != null)
             volumetricCloudsAmbientPass.Dispose();
+#if VC_SHADOWS
         if (volumetricCloudsShadowsPass != null)
             volumetricCloudsShadowsPass.Dispose();
+#endif // VC_SHADOWS
     }
 
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
@@ -333,7 +339,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             volumetricCloudsPass.outputToSceneDepth = depthTexture;
             volumetricCloudsPass.sunAttenuation = sunAttenuation;
 
+#if VC_SHADOWS
             volumetricCloudsShadowsPass.cloudsVolume = cloudsVolume;
+#endif // VC_SHADOWS
 
 #if URP_PBSKY
             PhysicallyBasedSky pbrSky = stack.GetComponent<PhysicallyBasedSky>();
@@ -347,6 +355,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
             renderer.EnqueuePass(volumetricCloudsPass);
 
+#if VC_SHADOWS
             if (cloudsVolume.shadows.value)
             {
                 // Check if URP supports "Light Cookies"
@@ -367,6 +376,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 }
 #endif
             }
+#endif // VC_SHADOWS
 
             // No need to render dynamic ambient probe for reflection probes.
             if (dynamicAmbientProbe && !isProbeCamera) { renderer.EnqueuePass(volumetricCloudsAmbientPass); }
@@ -950,7 +960,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 //cmd.SetRenderTarget(cloudsHandles, cloudsColorHandle);
                 // Clouds Rendering
                 Blitter.BlitTexture(cmd, cameraColorHandle, m_ScaleBias, cloudsMaterial, pass: 0);
-                
+
                 // Clouds Upscale & Combine
                 Blitter.BlitCameraTexture(cmd, cameraColorHandle, cameraColorHandle, RenderBufferLoadAction.Load, RenderBufferStoreAction.Store, cloudsMaterial, pass: hasAtmosphericScattering ? 7 : 1);
 
@@ -994,6 +1004,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
 #if UNITY_6000_0_OR_NEWER
         #region Render Graph Pass
+        static
         private Light GetMainLight(UniversalLightData lightData)
         {
             int shadowLightIndex = lightData.mainLightIndex;
@@ -1045,13 +1056,17 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         }
 
         // This static method is used to execute the pass and passed as the RenderFunc delegate to the RenderGraph render pass
-        static void ExecutePass(PassData data, UnsafeGraphContext context)
+        static void ExecutePass(PassData data, RasterGraphContext context)
         {
-            CommandBuffer cmd = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
+            if (!data.cameraColorHandle.IsValid() || ((RTHandle)data.cameraColorHandle).rt == null)
+                return;
+
+            RasterCommandBuffer cmd = context.cmd;
 
             // Clouds Upscale & Combine
-            Blitter.BlitCameraTexture(cmd, data.cloudsColorHandle, data.cameraColorHandle, RenderBufferLoadAction.Load, RenderBufferStoreAction.Store, data.cloudsMaterial, pass: data.hasAtmosphericScattering ? 7 : 1);
+            Blitter.BlitTexture(cmd, data.cloudsColorHandle, new Vector4(1, 1, 0, 0), data.cloudsMaterial, pass: data.hasAtmosphericScattering ? 7 : 1);
 
+#if VC_DEPTH
             if (data.outputToSceneDepth)
             {
                 Blitter.BlitCameraTexture(cmd, data.cameraDepthHandle, data.cameraTempDepthHandle);
@@ -1060,7 +1075,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 context.cmd.SetRenderTarget(data.cameraDepthHandle, data.cameraDepthHandle);
                 Blitter.BlitTexture(cmd, data.cameraTempDepthHandle, m_ScaleBias, data.cloudsMaterial, pass: 6);
             }
+#endif // VC_DEPTH
 
+#if VC_DENOISE
             if (data.denoiseClouds)
             {
                 // Prepare Temporal Reprojection (copy source buffer: colorHandle.rgb + cloudsHandle.a)
@@ -1077,15 +1094,23 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
                 data.cloudsMaterial.SetTexture(volumetricCloudsHistoryTexture, data.historyHandle);
             }
+#endif // VC_DENOISE
 
+#if VC_DEPTH
             context.cmd.SetRenderTarget(data.cameraColorHandle, data.activeDepthHandle);
+#endif // VC_DEPTH
         }
 
         static void ExecuteRasterPass(RasterPassData data, RasterGraphContext rgContext)
         {
+            if (!data.cameraColorHandle.IsValid() || ((RTHandle)data.cameraColorHandle).rt == null)
+                return;
+
             RasterCommandBuffer cmd = rgContext.cmd;
 
+#if VC_DEPTH
             data.cloudsMaterial.SetTexture(cameraDepthTexture, data.cameraDepthHandle);
+#endif // VC_DEPTH
             Blitter.BlitTexture(cmd, data.cameraColorHandle, m_ScaleBias, data.cloudsMaterial, pass: 0);
         }
 
@@ -1100,17 +1125,22 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             UniversalLightData lightData = frameData.Get<UniversalLightData>();
 
             // add a raster render pass to the render graph, specifying the name and the data type that will be passed to the ExecuteRasterPass function
-            using (var builder = renderGraph.AddRasterRenderPass<RasterPassData>(rasterPassProfilerTag, out var rasterPassData, m_ProfilingSampler))
+            using (var builder = renderGraph.AddRasterRenderPass<RasterPassData>(rasterPassProfilerTag, out var rasterPassData))
             {
                 Light mainLight = GetMainLight(lightData);
                 UpdateClouds(mainLight, cameraData.camera);
 
+#if ZERO
                 // Get the active color texture through the frame data, and set it as the source texture for the blit
                 rasterPassData.cameraColorHandle = resourceData.activeColorTexture;
+#if VC_DEPTH
                 rasterPassData.cameraDepthHandle = resourceData.cameraDepthTexture;
+#endif // VC_DEPTH
 
                 RenderTextureFormat cloudsHandleFormat = RenderTextureFormat.ARGBHalf; // lighting.rgb + transmittance.a
+#if VC_DEPTH
                 RenderTextureFormat cloudsDepthHandleFormat = RenderTextureFormat.RFloat; // average z-depth
+#endif // VC_DEPTH
 
                 RenderTextureDescriptor desc = cameraData.cameraTargetDescriptor;
 
@@ -1127,6 +1157,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 //builder.SetGlobalTextureAfterPass(cloudsTextureHandle, volumetricCloudsColorTexture);
                 //builder.SetGlobalTextureAfterPass(cloudsTextureHandle, volumetricCloudsLightingTexture); // Same as "_VolumetricCloudsColorTexture"
 
+#if VC_DEPTH
                 if (outputDepth)
                 {
                     desc.colorFormat = cloudsDepthHandleFormat;
@@ -1139,32 +1170,43 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
                     builder.SetRenderAttachment(cloudsDepthTextureHandle, 1);
                 }
+#endif // VC_DEPTH
 
                 // Fill up the passData with the data needed by the pass
                 rasterPassData.cloudsMaterial = cloudsMaterial;
 
+#if VC_DEPTH
                 ConfigureInput(ScriptableRenderPassInput.Depth);
+#endif // VC_DEPTH
 
-                builder.UseTexture(rasterPassData.cameraColorHandle, AccessFlags.Read); // AccessFlags.ReadWrite
+                builder.UseTexture(rasterPassData.cameraColorHandle, AccessFlags.None); // AccessFlags.ReadWrite
+#if VC_DEPTH
                 builder.UseTexture(rasterPassData.cameraDepthHandle, AccessFlags.Read);
+#endif // VC_DEPTH
 
                 builder.SetRenderAttachment(cloudsTextureHandle, 0);
-                builder.SetShadingRateFragmentSize(GetFragmentSize());
+                //builder.SetShadingRateFragmentSize(GetFragmentSize());
+#endif // ZERO
 
                 // Sets the render function.
                 builder.SetRenderFunc(static (RasterPassData rasterPassData, RasterGraphContext rgContext) => ExecuteRasterPass(rasterPassData, rgContext));
             }
 
             // add an unsafe render pass to the render graph, specifying the name and the data type that will be passed to the ExecutePass function
-            using (var builder = renderGraph.AddUnsafePass<PassData>(profilerTag, out var passData, m_ProfilingSampler))
+            using (var builder = renderGraph.AddRasterRenderPass<PassData>(profilerTag, out var passData, m_ProfilingSampler))
             {
+#if ZERO
                 // Get the active color texture through the frame data, and set it as the source texture for the blit
                 passData.cameraColorHandle = resourceData.activeColorTexture;
+#if VC_DEPTH
                 passData.activeDepthHandle = resourceData.activeDepthTexture;
                 passData.cameraDepthHandle = resourceData.cameraDepthTexture;
+#endif // VC_DEPTH
 
                 RenderTextureFormat cloudsHandleFormat = RenderTextureFormat.ARGBHalf; // lighting.rgb + transmittance.a
+#if VC_DEPTH
                 RenderTextureFormat cloudsDepthHandleFormat = RenderTextureFormat.RFloat; // average z-depth
+#endif // VC_DEPTH
 
                 RenderTextureDescriptor desc = cameraData.cameraTargetDescriptor;
 
@@ -1174,14 +1216,17 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 desc.colorFormat = cloudsHandleFormat;
 
                 // Full resolution camera texture descriptor
+#if VC_DEPTH
                 RenderTextureDescriptor tempDepthDesc = desc;
+#endif // VC_DEPTH
                 TextureHandle cloudsTextureHandle = renderGraph.ImportTexture(cloudsColorHandle);
 
 #if UNUSED
                 builder.SetGlobalTextureAfterPass(cloudsTextureHandle, volumetricCloudsColorTexture);
                 builder.SetGlobalTextureAfterPass(cloudsTextureHandle, volumetricCloudsLightingTexture); // Same as "_VolumetricCloudsColorTexture"
 #endif // UNUSED
-                
+
+#if VC_DEPTH
                 if (outputDepth)
                 {
                     TextureHandle cloudsDepthTextureHandle = renderGraph.ImportTexture(cloudsDepthHandle);
@@ -1198,6 +1243,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                     passData.cameraTempDepthHandle = tempDepthHandle;
                     builder.UseTexture(passData.cameraTempDepthHandle, AccessFlags.Write);
                 }
+#endif // VC_DEPTH
 
                 // Fill up the passData with the data needed by the pass
                 passData.cloudsMaterial = cloudsMaterial;
@@ -1212,6 +1258,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 passData.hasAtmosphericScattering = hasAtmosphericScattering;
 
                 passData.cloudsColorHandle = cloudsTextureHandle;
+#if VC_DENOISE
                 if (passData.denoiseClouds)
                 {
                     TextureHandle accumulateHandle = UniversalRenderer.CreateRenderGraphTexture(renderGraph, desc, name: _VolumetricCloudsAccumulationTexture, false, FilterMode.Point, TextureWrapMode.Clamp);
@@ -1219,23 +1266,31 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                     passData.accumulateHandle = accumulateHandle;
                     passData.historyHandle = historyHandle;
                 }
+#endif // VC_DENOISE
 
+#if VC_DEPTH
                 ConfigureInput(ScriptableRenderPassInput.Depth);
+#endif // VC_DEPTH
 
                 // UnsafePasses don't setup the outputs using UseTextureFragment/UseTextureFragmentDepth, you should specify your writes with UseTexture instead
+#if VC_DEPTH
                 builder.UseTexture(passData.cameraColorHandle, passData.denoiseClouds ? AccessFlags.ReadWrite : AccessFlags.Write);
                 builder.UseTexture(passData.activeDepthHandle, AccessFlags.None);
                 if (passData.outputToSceneDepth)
                     builder.UseTexture(passData.cameraDepthHandle, AccessFlags.Read);
+#endif // VC_DEPTH
                 builder.UseTexture(passData.cloudsColorHandle, AccessFlags.None);
+#if VC_DENOISE
                 if (passData.denoiseClouds)
                 {
                     builder.UseTexture(passData.accumulateHandle, AccessFlags.Write);
                     builder.UseTexture(passData.historyHandle, AccessFlags.ReadWrite);
                 }
+#endif // VC_DENOISE
+#endif // ZERO
 
                 // Assign the ExecutePass function to the render pass delegate, which will be called by the render graph when executing the pass
-                builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
+                builder.SetRenderFunc(static (PassData data, RasterGraphContext context) => ExecutePass(data, context));
             }
         }
         #endregion
@@ -1250,12 +1305,11 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             accumulateHandle?.Release();
             cameraTempDepthHandle?.Release();
 
+#if ZERO
 #if BUGFIX
-            if (customLutPresetMap != null)
-            {
-                Destroy(customLutPresetMap);
-            }
+            CoreUtils.Destroy(customLutPresetMap);
 #endif // BUGFIX
+#endif // ZERO
         }
         #endregion
     }
@@ -1296,7 +1350,6 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 #endif
 
 #if UNITY_6000_0_OR_NEWER
-        static
         private readonly Matrix4x4[] skyViewMatrices = new Matrix4x4[6];
 #endif // UNITY_6000_0_OR_NEWER
 
@@ -1350,7 +1403,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             var desc = renderingData.cameraData.cameraTargetDescriptor;
 
             bool isStereoEnabled = camera.stereoEnabled;
-            
+
             using (new ProfilingScope(cmd, m_ProfilingSampler))
             {
                 if (isStereoEnabled)
@@ -1561,7 +1614,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 RenderTextureDescriptor desc = cameraData.cameraTargetDescriptor;
 
                 float2 cameraResolution = float2(desc.width, desc.height);
-                
+
                 desc.msaaSamples = 1;
                 desc.useMipMap = true;
                 desc.autoGenerateMips = true;
@@ -1722,7 +1775,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             desc.height = shadowResolution;
             desc.width = shadowResolution;
             desc.dimension = TextureDimension.Tex2D;
-            
+
 #if UNITY_6000_0_OR_NEWER
             RenderingUtils.ReAllocateHandleIfNeeded(ref shadowTextureHandle, desc, FilterMode.Bilinear, TextureWrapMode.Clamp, name: _VolumetricCloudsShadowTexture);
 #else
@@ -1968,7 +2021,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             {
                 // UniversalResourceData contains all the texture handles used by the renderer, including the active color and depth textures
                 // The active color and depth textures are the main color and depth buffers that the camera renders into
-                
+
                 Matrix4x4 wsToLSMat = targetLight.transform.worldToLocalMatrix;
                 Matrix4x4 lsToWSMat = targetLight.transform.localToWorldMatrix;
 
@@ -1993,7 +2046,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                     posLightSpace = wsToLSMat.MultiplyPoint(float3(-corner) + cameraPos);
                     lightSpaceBounds.Encapsulate(posLightSpace);
                 }
-                
+
                 // Compute the four corners we need
                 float3 c0 = lsToWSMat.MultiplyPoint(lightSpaceBounds.center + new Vector3(-lightSpaceBounds.extents.x, -lightSpaceBounds.extents.y, lightSpaceBounds.extents.z));
                 float3 c1 = lsToWSMat.MultiplyPoint(lightSpaceBounds.center + new Vector3(lightSpaceBounds.extents.x, -lightSpaceBounds.extents.y, lightSpaceBounds.extents.z));
@@ -2012,7 +2065,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
                 float3 dirX = c1 - c0;
                 float3 dirY = c2 - c0;
-                 
+
                 // The shadow cookie size
                 float2 regionSize = float2(length(dirX), length(dirY));
 
@@ -2035,7 +2088,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
                 TextureHandle intermediateShadowTexture = renderGraph.CreateTexture(new TextureDesc(shadowResolution, shadowResolution, false, false)
                 { colorFormat = cookieTextureFormat, enableRandomWrite = false, name = _VolumetricCloudsShadowTempTexture });
-                
+
                 // Update material properties
                 cloudsMaterial.SetFloat(shadowCookieResolution, shadowResolution);
                 //cloudsMaterial.SetFloat(shadowPlaneOffset, cloudsVolume.shadowPlaneHeightOffset.value);
