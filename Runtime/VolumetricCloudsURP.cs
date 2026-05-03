@@ -217,6 +217,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
     public override void Create()
     {
+#if DEBUG
         // Check if the volumetric clouds material uses the correct shader.
         if (material != null)
         {
@@ -236,6 +237,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 #endif
             return;
         }
+#endif // DEBUG
 
         // Store the current enable state of volumetric clouds in a global shader keyword
         bool isDebugger = DebugManager.instance.isAnyDebugUIActive;
@@ -251,7 +253,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         if (volumetricCloudsPass == null)
         {
             volumetricCloudsPass = new(material, resolutionScale);
-            volumetricCloudsPass.renderPassEvent = RenderPassEvent.BeforeRenderingPrePasses; // Use camera previous matrix to do reprojection
+            volumetricCloudsPass.renderPassEvent = RenderPassEvent.AfterRenderingPrePasses - 1; // Use camera previous matrix to do reprojection
         }
         else
         {
@@ -261,11 +263,13 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             volumetricCloudsPass.dynamicAmbientProbe = ambientProbe == CloudsAmbientMode.Dynamic;
         }
 
+#if VC_AMBIENT
         if (volumetricCloudsAmbientPass == null)
         {
             volumetricCloudsAmbientPass = new(material);
             volumetricCloudsAmbientPass.renderPassEvent = RenderPassEvent.BeforeRenderingTransparents - 1;
         }
+#endif // VC_AMBIENT
 
 #if VC_SHADOWS
         if (volumetricCloudsShadowsPass == null)
@@ -290,6 +294,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
     {
+#if DEBUG
         if (material == null)
         {
 #if UNITY_EDITOR || DEBUG
@@ -297,8 +302,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 #endif
             return;
         }
+#endif // DEBUG
 
-    #if UNITY_EDITOR
+#if UNITY_EDITOR
         bool isEditingPrefab = UnityEditor.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage() != null;
         bool isSceneViewFocused = UnityEditor.SceneView.lastActiveSceneView != null && UnityEditor.SceneView.lastActiveSceneView.hasFocus;
         // Disable Volumetric Clouds when entering prefab mode.
@@ -363,9 +369,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 if (asset.supportsLightCookies)
                 {
                     isCookiePrinted = false;
-                #if URP_PBSKY
+#if URP_PBSKY
                     volumetricCloudsShadowsPass.visualEnvVolume = visualEnvironment;
-                #endif
+#endif
                     renderer.EnqueuePass(volumetricCloudsShadowsPass);
                 }
 #if UNITY_EDITOR || DEBUG
@@ -378,8 +384,10 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             }
 #endif // VC_SHADOWS
 
+#if VC_AMBIENT
             // No need to render dynamic ambient probe for reflection probes.
             if (dynamicAmbientProbe && !isProbeCamera) { renderer.EnqueuePass(volumetricCloudsAmbientPass); }
+#endif // VC_AMBIENT
 
             isLogPrinted = false;
         }
@@ -541,6 +549,11 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
         private void UpdateMaterialProperties(Camera camera)
         {
+            UpdateMaterialProperties(camera.transform.position, camera.nearClipPlane);
+        }
+
+        private void UpdateMaterialProperties(Vector3 cameraPosition, float nearClipPlane)
+        {
 #if URP_PBSKY
             bool isVolumeActive = visualEnvVolume != null && visualEnvVolume.IsActive() && visualEnvVolume.skyType.value != 0;
             if (isVolumeActive)
@@ -581,7 +594,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             cloudsMaterial.SetFloat(maxStepSize, cloudsVolume.altitudeRange.value / 8.0f);
 
 #if URP_PBSKY
-            float4 planetCenterRad = visualEnvVolume.GetPlanetCenterRadius(camera.transform.position);
+            float4 planetCenterRad = visualEnvVolume.GetPlanetCenterRadius(cameraPosition);
             float actualEarthRad = isVolumeActive ? planetCenterRad.w : Mathf.Lerp(1.0f, 0.025f, cloudsVolume.earthCurvature.value) * earthRad;
             planetCenterRad = visualEnvVolume.renderingSpace.value == VisualEnvironment.RenderingSpace.World ? planetCenterRad : float4(0.0f, -actualEarthRad, 0.0f, actualEarthRad);
 
@@ -659,7 +672,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             cloudsMaterial.SetFloat(microErosionFactor, cloudsVolume.microErosionFactor.value);
 
             bool autoFadeIn = cloudsVolume.fadeInMode.value == VolumetricClouds.CloudFadeInMode.Automatic;
-            cloudsMaterial.SetFloat(fadeInStart, autoFadeIn ? Mathf.Max(cloudsVolume.altitudeRange.value * 0.2f, camera.nearClipPlane) : Mathf.Max(cloudsVolume.fadeInStart.value, camera.nearClipPlane));
+            cloudsMaterial.SetFloat(fadeInStart, autoFadeIn ? Mathf.Max(cloudsVolume.altitudeRange.value * 0.2f, nearClipPlane) : Mathf.Max(cloudsVolume.fadeInStart.value, nearClipPlane));
             cloudsMaterial.SetFloat(fadeInDistance, autoFadeIn ? cloudsVolume.altitudeRange.value * 0.3f : cloudsVolume.fadeInDistance.value);
             cloudsMaterial.SetFloat(multiScattering, 1.0f - cloudsVolume.multiScattering.value * 0.95f);
             cloudsMaterial.SetColor(scatteringTint, Color.white - cloudsVolume.scatteringTint.value * 0.75f);
@@ -668,8 +681,8 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             cloudsMaterial.SetFloat(earthRadius, actualEarthRad);
             cloudsMaterial.SetFloat(accumulationFactor, cloudsVolume.temporalAccumulationFactor.value);
             cloudsMaterial.SetFloat(improvedTransmittanceBlend, cloudsVolume.perceptualBlending.value);
-            Vector3 cameraPosPS = camera.transform.position - new Vector3(0.0f, -actualEarthRad, 0.0f);
-            cloudsMaterial.SetFloat(cloudnearPlane, max(GetCloudNearPlane(cameraPosPS, bottomAltitude, highestAltitude), camera.nearClipPlane));
+            Vector3 cameraPosPS = cameraPosition - new Vector3(0.0f, -actualEarthRad, 0.0f);
+            cloudsMaterial.SetFloat(cloudnearPlane, max(GetCloudNearPlane(cameraPosPS, bottomAltitude, highestAltitude), nearClipPlane));
 
             // Custom cloud map is not supported yet.
             //float lowerCloudRadius = (bottomAltitude + highestAltitude) * 0.5f - actualEarthRad;
@@ -2210,18 +2223,4 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         }
         #endregion
     }
-
-#if UNITY_6000_3_OR_NEWER
-    private static ShadingRateFragmentSize GetFragmentSize()
-    {
-        return ScalableBufferManager.widthScaleFactor switch
-        {
-            <= 0.25f => ShadingRateFragmentSize.FragmentSize1x1,
-            <= 0.4f => ShadingRateFragmentSize.FragmentSize1x2,
-            <= 0.6f => ShadingRateFragmentSize.FragmentSize2x2,
-            <= 0.8f => ShadingRateFragmentSize.FragmentSize2x4,
-            _ => ShadingRateFragmentSize.FragmentSize4x4,
-        };
-    }
-#endif // UNITY_6000_3_OR_NEWER
 }

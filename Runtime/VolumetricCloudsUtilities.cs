@@ -879,7 +879,6 @@ public class VolumetricCloudsUtilities
             _ErosionNoiseHeight = _ErosionNoise.height,
 
             _CloudCurveTexture = _CloudCurveTexture.GetPixelData<half4>(mipLevel: 0),
-            _CloudCurveTextureWidth = _CloudCurveTexture.width,
 
             results = results,
         };
@@ -964,8 +963,8 @@ public class VolumetricCloudsUtilities
         // Allow _CloudCurveTexture to be accessed from a background thread
         // while PrepareCustomLutData() is writing to it
         [Unity.Collections.LowLevel.Unsafe.NativeDisableContainerSafetyRestriction, NoAlias]
+        [NativeFixedLength(VolumetricCloudsURP.VolumetricCloudsPass.customLutMapResolution)]
         [ReadOnly] public NativeArray<half4> _CloudCurveTexture;
-        [ReadOnly] public int _CloudCurveTextureWidth;
 
         [NativeMatchesParallelForLength]
         [WriteOnly] public NativeArray<float> results;
@@ -1181,7 +1180,7 @@ public class VolumetricCloudsUtilities
 
             // Read from the LUT
             //#if defined(CLOUDS_SIMPLE_PRESET)
-            float3 densityErosionAO = SAMPLE_TEXTURE2D_LOD(_CloudCurveTexture, properties.height, _CloudCurveTextureWidth);
+            float3 densityErosionAO = SAMPLE_TEXTURE2D_LOD(_CloudCurveTexture, properties.height);
             //#else
             //half3 densityErosionAO = SAMPLE_TEXTURE2D_LOD(_CloudLutTexture, s_linear_repeat_sampler, float2(cloudCoverageData.cloudType, properties.height), CLOUD_LUT_MIP_OFFSET).xyz;
             //#endif
@@ -1264,6 +1263,13 @@ public class VolumetricCloudsUtilities
         {
             int height = tex2D.Length / width;
             return tex2D[mod(texCoordy * height, height) * width].xyz;
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(256)]
+        static float3 SAMPLE_TEXTURE2D_LOD(in NativeArray<half4> tex2D, float texCoordy)
+        {
+            int height = tex2D.Length;
+            return tex2D[mod(texCoordy * height, height)].xyz;
         }
 
 #pragma warning disable IDE1006 // Naming Styles
