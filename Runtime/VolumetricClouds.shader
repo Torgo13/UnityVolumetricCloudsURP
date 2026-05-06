@@ -727,8 +727,15 @@ Shader "Hidden/Sky/VolumetricClouds"
                 half4 cloudsColor = half4(0.0, 0.0, 0.0, 1.0);
 
                 half3 invViewDirWS = normalize(input.positionWS - GetCameraPositionWS());
-
+                
+#ifdef _LOCAL_VOLUMETRIC_CLOUDS
+                CloudRay cloudRay;
+                cloudRay.originWS = GetCameraPositionWS();
+                cloudRay.direction = invViewDirWS;
+                cloudRay.maxRayLength = MAX_SKYBOX_VOLUMETRIC_CLOUDS_DISTANCE;
+#else
                 CloudRay cloudRay = BuildCloudsRay(screenUV, UNITY_RAW_FAR_CLIP_VALUE, invViewDirWS, false);
+#endif // _LOCAL_VOLUMETRIC_CLOUDS
                 cloudRay.integrationNoise = 0.0;
 
                 // Evaluate the cloud transmittance

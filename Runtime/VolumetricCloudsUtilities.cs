@@ -824,6 +824,17 @@ public class VolumetricCloudsUtilities
         UnityEngine.Assertions.Assert.AreEqual(startPosWS.Length, directionWS.Length);
         UnityEngine.Assertions.Assert.IsTrue(results.Length >= startPosWS.Length, "results must contain at least as many elements as the input NativeArrays.");
 
+        UnityEngine.Assertions.Assert.AreEqual(ErosionNoiseWidth, _ErosionNoise.width);
+        UnityEngine.Assertions.Assert.AreEqual(ErosionNoiseWidth, _ErosionNoise.height);
+        UnityEngine.Assertions.Assert.AreEqual(ErosionNoiseWidth, _ErosionNoise.depth);
+
+        UnityEngine.Assertions.Assert.AreEqual(Worley128RGBAWidth, _Worley128RGBA.width);
+        UnityEngine.Assertions.Assert.AreEqual(Worley128RGBAWidth, _Worley128RGBA.height);
+        UnityEngine.Assertions.Assert.AreEqual(Worley128RGBAWidth, _Worley128RGBA.depth);
+
+        UnityEngine.Assertions.Assert.AreEqual(1, _CloudCurveTexture.width);
+        UnityEngine.Assertions.Assert.AreEqual(VolumetricCloudsURP.VolumetricCloudsPass.customLutMapResolution, _CloudCurveTexture.height);
+
         // Deallocated in TraceVolumetricRayJob
         var cloudRay = new NativeArray<CloudRay>(startPosWS.Length, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
 
