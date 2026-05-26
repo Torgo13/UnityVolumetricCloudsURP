@@ -42,9 +42,9 @@ Shader "Hidden/Sky/VolumetricClouds"
         [HideInInspector] _AccumulationFactor("Accumulation Factor", Float) = 0.95
         [HideInInspector] _CloudNearPlane("Cloud Near Plane", Float) = 0.3
         
-        [MainTexture][NoScaleOffset] _BaseMap("Texture", 2D) = "black" {}
-        _TerrainData("Terrain Data", Vector) = (0.0, 0.0, 0.0, 0.0) // x: _TerrainMinDistance, y: _TerrainMaxAltitude, z: _FadeIn, w: _QualityAdd commentMore actions
+        [MainTexture] _BaseMap("Texture", 2D) = "black" {}
         _SnapshotData("Snapshot Data", Vector) = (0.0, 0.0, 0.0, 0.0) // x: boundsMin.x, y: boundsMin.z, z: 1 / TEXTURE_SIZE (1 / 4096), w: FogFactor
+        _TerrainData("Terrain Data", Vector) = (0.0, 0.0, 0.0, 0.0) // x: _TerrainMinDistance, y: _TerrainMaxAltitude, z: _FadeIn, w: _Quality
     }
 
     SubShader
@@ -90,14 +90,6 @@ Shader "Hidden/Sky/VolumetricClouds"
             SAMPLER(s_linear_repeat_sampler);
             SAMPLER(s_trilinear_repeat_sampler);
             SAMPLER(sampler_VolumetricCloudsAmbientProbe);
-            
-            TEXTURE2D(_BaseMap);
-            SAMPLER(sampler_point_repeat);
-            half _ShadowIntensity;
-            half _VPAmbientLight;
-            half _VPDaylightShadowAtten;
-            
-            #pragma multi_compile_fragment _ _TERRAIN
 
             #pragma multi_compile_local_fragment _ _CLOUDS_MICRO_EROSION
             #pragma multi_compile_local_fragment _ _CLOUDS_AMBIENT_PROBE
@@ -204,11 +196,6 @@ Shader "Hidden/Sky/VolumetricClouds"
         #endif
 
             SAMPLER(s_linear_clamp_sampler);
-            
-            TEXTURE2D(_BaseMap);
-            SAMPLER(sampler_point_repeat);
-            
-            #pragma multi_compile_fragment _ _TERRAIN
 
             #pragma multi_compile_local_fragment _ _LOW_RESOLUTION_CLOUDS
 
@@ -431,7 +418,7 @@ Shader "Hidden/Sky/VolumetricClouds"
             #pragma fragment TraceVolumetricCloudsShadows
 
             #pragma target 3.5
-            
+
             TEXTURE2D(_CloudLutTexture);
             TEXTURE2D(_CloudCurveTexture);
             TEXTURE3D(_Worley128RGBA);
@@ -473,7 +460,7 @@ Shader "Hidden/Sky/VolumetricClouds"
             #pragma fragment FilterVolumetricCloudsShadow
 
             #pragma target 3.5
-            
+
             TEXTURE2D(_CloudLutTexture);
             TEXTURE2D(_CloudCurveTexture);
             TEXTURE3D(_Worley128RGBA);
@@ -752,8 +739,15 @@ Shader "Hidden/Sky/VolumetricClouds"
                 half4 cloudsColor = half4(0.0, 0.0, 0.0, 1.0);
 
                 half3 invViewDirWS = normalize(input.positionWS - GetCameraPositionWS());
-
+		
+#ifdef _LOCAL_VOLUMETRIC_CLOUDS
+                CloudRay cloudRay;
+                cloudRay.originWS = _PBRSkyCameraPosPS + _PlanetCenterRadius.xyz;
+                cloudRay.direction = invViewDirWS;
+                cloudRay.maxRayLength = MAX_SKYBOX_VOLUMETRIC_CLOUDS_DISTANCE;
+#else
                 CloudRay cloudRay = BuildCloudsRay(screenUV, UNITY_RAW_FAR_CLIP_VALUE, invViewDirWS, false);
+#endif // _LOCAL_VOLUMETRIC_CLOUDS
                 cloudRay.integrationNoise = 0.0;
 
                 // Evaluate the cloud transmittance
