@@ -122,8 +122,11 @@ class VolumetricCloudsEditor : VolumeComponentEditor
     {
         var o = new PropertyFetcher<VolumetricClouds>(serializedObject);
 
+#if UNITY_6000_3_OR_NEWER
+#else
         RenderDataListFieldInfo = typeof(UniversalRenderPipelineAsset).GetField(k_RendererDataList, BindingFlags.Instance | BindingFlags.NonPublic);
-
+#endif // UNITY_6000_3_OR_NEWER
+        
         // General
         m_Enable = Unpack(o.Find(x => x.state));
         m_LocalClouds = Unpack(o.Find(x => x.localClouds));
@@ -625,6 +628,10 @@ class VolumetricCloudsEditor : VolumeComponentEditor
     /// From "https://forum.unity.com/threads/enable-or-disable-render-features-at-runtime.932571/"
     /// </summary>
     #region Reflection
+#if UNITY_6000_3_OR_NEWER
+    private static System.ReadOnlySpan<ScriptableRendererData> GetRendererDataList()
+        => GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset urpAsset ? urpAsset.rendererDataList : default;
+#else
     private static FieldInfo RenderDataListFieldInfo;
 
     private static ScriptableRendererData[] GetRendererDataList(UniversalRenderPipelineAsset asset = null)
@@ -649,6 +656,7 @@ class VolumetricCloudsEditor : VolumeComponentEditor
             return null;
         }
     }
+#endif // UNITY_6000_3_OR_NEWER
 
     private static ScriptableRendererFeature GetRendererFeature(string typeName)
     {
@@ -660,6 +668,12 @@ class VolumetricCloudsEditor : VolumeComponentEditor
         {
             foreach (var rendererFeature in renderData.rendererFeatures)
             {
+#if UNITY_6000_3_OR_NEWER
+                if (rendererFeature as VolumetricCloudsURP != null)
+                {
+                    return rendererFeature;
+                }
+#else
                 if (rendererFeature == null)
                     continue;
 
@@ -667,6 +681,7 @@ class VolumetricCloudsEditor : VolumeComponentEditor
                 {
                     return rendererFeature;
                 }
+#endif // UNITY_6000_3_OR_NEWER
             }
         }
 
