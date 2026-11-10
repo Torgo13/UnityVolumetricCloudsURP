@@ -17,17 +17,17 @@ Global Volumetric Clouds:
  
 Local Volumetric Clouds:
  
- ![LocalVolumetricClouds1](./Documentation/Images/Showcases/LocalClouds1.jpg)
+ ![LocalVolumetricClouds1](./Documentation~/Images/Showcases/LocalClouds1.jpg)
  
- ![LocalVolumetricClouds2](./Documentation/Images/Showcases/LocalClouds2.jpg)
+ ![LocalVolumetricClouds2](./Documentation~/Images/Showcases/LocalClouds2.jpg)
  
 [Physically Based Sky](https://github.com/jiaozi158/UnityPhysicallyBasedSkyURP):
  
- ![PhysicallyBasedSkyURP](./Documentation/Images/Showcases/PhysicallyBasedSky.jpg)
+ ![PhysicallyBasedSkyURP](./Documentation~/Images/Showcases/PhysicallyBasedSky.jpg)
  
 Documentation
 ------------
-- [How to setup](./Documentation/Setup.md)
+- [How to setup](./Documentation~/Setup.md)
  
 Requirements
 ------------
