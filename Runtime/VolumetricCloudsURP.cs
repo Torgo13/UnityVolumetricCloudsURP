@@ -284,6 +284,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
     {
+#if DEBUG
         if (material == null)
         {
         #if UNITY_EDITOR || DEBUG
@@ -291,6 +292,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         #endif
             return;
         }
+#endif // DEBUG
 
     #if UNITY_EDITOR
         bool isEditingPrefab = UnityEditor.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage() != null;
@@ -303,8 +305,12 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         var stack = VolumeManager.instance.stack;
         VolumetricClouds cloudsVolume = stack.GetComponent<VolumetricClouds>();
         ColorAdjustments colorAdjustments = stack.GetComponent<ColorAdjustments>();
+#if DEBUG
         bool isDebugger = DebugManager.instance.isAnyDebugUIActive;
         bool isVolumeActive = cloudsVolume != null && cloudsVolume.IsActive() && (!isDebugger || renderingDebugger);
+#else
+        bool isVolumeActive = cloudsVolume != null && cloudsVolume.IsActive();
+#endif // DEBUG
 
         bool isProbeCamera = renderingData.cameraData.cameraType == CameraType.Reflection && reflectionProbe;
 
@@ -317,9 +323,16 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         {
         #if URP_PBSKY
             VisualEnvironment visualEnvironment = stack.GetComponent<VisualEnvironment>();
+#if OPTIMISATION_UNITY
+            bool visualEnvironmentActive = visualEnvironment != null && visualEnvironment.IsActive();
+#endif // OPTIMISATION_UNITY
 
             // Check if the ambient probe is already updating dynamically.
+#if OPTIMISATION_UNITY
+            bool isDynamicPbrSky = visualEnvironmentActive && visualEnvironment.skyAmbientMode.value == VisualEnvironment.SkyAmbientMode.Dynamic && Shader.IsKeywordEnabled(VISUAL_ENVIRONMENT_DYNAMIC_SKY);
+#else
             bool isDynamicPbrSky = visualEnvironment != null && visualEnvironment.IsActive() && visualEnvironment.skyAmbientMode.value == VisualEnvironment.SkyAmbientMode.Dynamic && Shader.IsKeywordEnabled(VISUAL_ENVIRONMENT_DYNAMIC_SKY);
+#endif // OPTIMISATION_UNITY
             bool dynamicAmbientProbe = !isDynamicPbrSky && ambientProbe == CloudsAmbientMode.Dynamic;
         #else
             bool dynamicAmbientProbe = ambientProbe == CloudsAmbientMode.Dynamic;
@@ -338,7 +351,11 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         #if URP_PBSKY
             PhysicallyBasedSky pbrSky = stack.GetComponent<PhysicallyBasedSky>();
             Fog fog = stack.GetComponent<Fog>();
+#if OPTIMISATION_UNITY
+            volumetricCloudsPass.hasAtmosphericScattering = visualEnvironmentActive && visualEnvironment.skyType.value == (int)VisualEnvironment.SkyType.PhysicallyBased && pbrSky != null && pbrSky.IsActive() && pbrSky.atmosphericScattering.value;
+#else
             volumetricCloudsPass.hasAtmosphericScattering = visualEnvironment != null && visualEnvironment.IsActive() && visualEnvironment.skyType.value == (int)VisualEnvironment.SkyType.PhysicallyBased && pbrSky != null && pbrSky.IsActive() && pbrSky.atmosphericScattering.value;
+#endif // OPTIMISATION_UNITY
             volumetricCloudsPass.hasAtmosphericScattering |= fog != null && fog.IsActive();
             volumetricCloudsPass.visualEnvVolume = visualEnvironment;
         #else
@@ -487,10 +504,23 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
         private static readonly Vector4 m_ScaleBias = new Vector4(1.0f, 1.0f, 0.0f, 0.0f);
 
+#if URP_COMPATIBILITY_MODE
         private readonly static FieldInfo depthTextureFieldInfo = typeof(UniversalRenderer).GetField("m_DepthTexture", BindingFlags.NonPublic | BindingFlags.Instance);
+#endif // URP_COMPATIBILITY_MODE
 
         private Texture2D customLutPresetMap;
+#if OPTIMISATION
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        struct ColorHalf
+        {
+            public half4 c;
+
+            public static implicit operator Color(ColorHalf c) => new Color(c.c.x, c.c.y, c.c.z, c.c.w);
+            public static implicit operator ColorHalf(Color c) => new ColorHalf { c = new half4((half)c.r, (half)c.g, (half)c.b, default) };
+        }
+#else
         private readonly Color[] customLutColorArray = new Color[customLutMapResolution];
+#endif // OPTIMISATION
 
         public const float earthRad = 6378100.0f;
         public const float windNormalizationFactor = 100000.0f; // NOISE_TEXTURE_NORMALIZATION_FACTOR in "VolumetricCloudsUtilities.hlsl"
@@ -505,7 +535,24 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
         private static float square(float x) => x * x;
 
+#if OPTIMISATION_UNITY
+        struct CameraParams
+        {
+            public struct TransformParams
+            {
+                public Vector3 position;
+            }
+
+            public TransformParams transform;
+            public float nearClipPlane;
+
+            public static implicit operator CameraParams(Camera camera) => new CameraParams { transform = new TransformParams { position = camera.transformHandle.position, }, nearClipPlane = camera.nearClipPlane, };
+        }
+
+        private void UpdateMaterialProperties(in CameraParams camera)
+#else
         private void UpdateMaterialProperties(Camera camera)
+#endif // OPTIMISATION_UNITY
         {
         #if URP_PBSKY
             bool isVolumeActive = visualEnvVolume != null && visualEnvVolume.IsActive() && visualEnvVolume.skyType.value != 0;
@@ -692,7 +739,11 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 customLutPresetMap.hideFlags = HideFlags.HideAndDontSave;
             }
 
+#if OPTIMISATION
+            var pixels = customLutPresetMap.GetRawTextureData<ColorHalf>();
+#else
             var pixels = customLutColorArray;
+#endif // OPTIMISATION
 
             var densityCurve = clouds.densityCurve.value;
             var erosionCurve = clouds.erosionCurve.value;
@@ -717,7 +768,10 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 }
             }
 
+#if OPTIMISATION
+#else
             customLutPresetMap.SetPixels(pixels);
+#endif // OPTIMISATION
             customLutPresetMap.Apply();
 
             cloudsMaterial.SetTexture(cloudsCurveLut, customLutPresetMap);
@@ -792,6 +846,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             resolutionScale = resolution;
         }
 
+#if URP_COMPATIBILITY_MODE
         #region Non Render Graph Pass
         private Light GetMainLight(LightData lightData)
         {
@@ -936,6 +991,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             CommandBufferPool.Release(cmd);
         }
         #endregion
+#endif // URP_COMPATIBILITY_MODE
 
     #if UNITY_6000_0_OR_NEWER
         #region Render Graph Pass
@@ -1028,10 +1084,13 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
 
         static void ExecuteRasterPass(RasterPassData data, RasterGraphContext rgContext)
         {
+#if URP_PBSKY
+#else
             RasterCommandBuffer cmd = rgContext.cmd;
 
             data.cloudsMaterial.SetTexture(cameraDepthTexture, data.cameraDepthHandle);
             Blitter.BlitTexture(cmd, data.cameraColorHandle, m_ScaleBias, data.cloudsMaterial, pass: 0);
+#endif // URP_PBSKY
         }
 
         // This is where the renderGraph handle can be accessed.
@@ -1040,7 +1099,10 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         {
             // UniversalResourceData contains all the texture handles used by the renderer, including the active color and depth textures
             // The active color and depth textures are the main color and depth buffers that the camera renders into
+#if URP_PBSKY
+#else
             UniversalResourceData resourceData = frameData.Get<UniversalResourceData>();
+#endif // URP_PBSKY
             UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
             UniversalLightData lightData = frameData.Get<UniversalLightData>();
 
@@ -1050,6 +1112,8 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 Light mainLight = GetMainLight(lightData);
                 UpdateClouds(mainLight, cameraData.camera);
 
+#if URP_PBSKY
+#else
                 // Get the active color texture through the frame data, and set it as the source texture for the blit
                 rasterPassData.cameraColorHandle = resourceData.activeColorTexture;
                 rasterPassData.cameraDepthHandle = resourceData.cameraDepthTexture;
@@ -1094,11 +1158,14 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 builder.UseTexture(rasterPassData.cameraDepthHandle, AccessFlags.Read);
 
                 builder.SetRenderAttachment(cloudsTextureHandle, 0);
+#endif // URP_PBSKY
 
                 // Sets the render function.
-                builder.SetRenderFunc((RasterPassData rasterPassData, RasterGraphContext rgContext) => ExecuteRasterPass(rasterPassData, rgContext));
+                builder.SetRenderFunc(static (RasterPassData rasterPassData, RasterGraphContext rgContext) => ExecuteRasterPass(rasterPassData, rgContext));
             }
 
+#if URP_PBSKY
+#else
             // add an unsafe render pass to the render graph, specifying the name and the data type that will be passed to the ExecutePass function
             using (var builder = renderGraph.AddUnsafePass<PassData>(profilerTag, out var passData))
             {
@@ -1171,8 +1238,9 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 builder.UseTexture(passData.historyHandle, AccessFlags.ReadWrite);
 
                 // Assign the ExecutePass function to the render pass delegate, which will be called by the render graph when executing the pass
-                builder.SetRenderFunc((PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
+                builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
             }
+#endif // URP_PBSKY
         }
         #endregion
     #endif
@@ -1235,6 +1303,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             cloudsMaterial = material;
         }
 
+#if URP_COMPATIBILITY_MODE
         #region Non Render Graph Pass
     #if UNITY_6000_0_OR_NEWER
         [Obsolete]
@@ -1339,6 +1408,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             CommandBufferPool.Release(cmd);
         }
         #endregion
+#endif // URP_COMPATIBILITY_MODE
 
     #if UNITY_6000_0_OR_NEWER
         #region Render Graph Pass
@@ -1471,7 +1541,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 builder.AllowGlobalStateModification(true);
 
                 // Assign the ExecutePass function to the render pass delegate, which will be called by the render graph when executing the pass
-                builder.SetRenderFunc((PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
+                builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
             }
         }
         #endregion
@@ -1531,6 +1601,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             cloudsMaterial = material;
         }
 
+#if URP_COMPATIBILITY_MODE
         #region Non Render Graph Pass
         private Light GetMainLight(LightData lightData)
         {
@@ -1719,6 +1790,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             CommandBufferPool.Release(cmd);
         }
         #endregion
+#endif // URP_COMPATIBILITY_MODE
 
     #if UNITY_6000_0_OR_NEWER
         #region Render Graph Pass
@@ -1930,7 +2002,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
                 builder.AllowGlobalStateModification(true);
 
                 // Assign the ExecutePass function to the render pass delegate, which will be called by the render graph when executing the pass
-                builder.SetRenderFunc((PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
+                builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) => ExecutePass(data, context));
             }
         }
         #endregion

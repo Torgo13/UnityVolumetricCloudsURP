@@ -728,14 +728,26 @@ Shader "Hidden/Sky/VolumetricClouds"
 
                 half3 invViewDirWS = normalize(input.positionWS - GetCameraPositionWS());
 
+#ifdef PHYSICALLY_BASED_SKY
+                CloudRay cloudRay;
+                cloudRay.originWS = _PBRSkyCameraPosPS + _PlanetCenterRadius.xyz;
+                cloudRay.direction = invViewDirWS;
+                cloudRay.maxRayLength = MAX_SKYBOX_VOLUMETRIC_CLOUDS_DISTANCE;
+                cloudRay.integrationNoise = 0.0; //GenerateHashedRandomFloat(uint3(unity_DeltaTime.xyz * _Time.xyz))
+#else
                 CloudRay cloudRay = BuildCloudsRay(screenUV, UNITY_RAW_FAR_CLIP_VALUE, invViewDirWS, false);
                 cloudRay.integrationNoise = 0.0;
+#endif // PHYSICALLY_BASED_SKY
 
                 // Evaluate the cloud transmittance
                 VolumetricRayResult result = TraceVolumetricRay(cloudRay);
 
                 if (result.invalidRay)
+#ifdef PHYSICALLY_BASED_SKY
+                    return cloudsColor;
+#else
                     discard;
+#endif // PHYSICALLY_BASED_SKY
 
                 cloudsColor = half4(result.scattering.xyz, result.transmittance);
 
