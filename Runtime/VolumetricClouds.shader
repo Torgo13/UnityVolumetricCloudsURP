@@ -41,6 +41,22 @@ Shader "Hidden/Sky/VolumetricClouds"
         [HideInInspector] _NormalizationFactor("Normalization Factor", Float) = 0.7854
         [HideInInspector] _AccumulationFactor("Accumulation Factor", Float) = 0.95
         [HideInInspector] _CloudNearPlane("Cloud Near Plane", Float) = 0.3
+
+        [MainTexture] _TerrainFarChunksTex("Terrain Info", 2D) = "black" {}
+        _CloudsTex("Clouds Tex", 2D) = "black" {}
+        _WaterTex("Water Tex", 2D) = "white" {}
+        [HideInInspector] _SnapshotData ("SnapshotData", Vector) = (0,0,0) // x: boundsMin.x, y: boundsMin.z, z: 1/TEXTURE_SIZE, w: visibleDistance
+        _WaterColor ("WaterColor", Color) = (0,0,0)
+        _WaterLevel ("WaterLevel", Float) = 0
+        _ShoreColor ("Shore Color", Color) = (1,1,1)
+        _TerrainMaxAltitude ("Terrain Max Altitude", Float) = 100
+        _StarBlockSize ("Star Block Size", Range(100,300)) = 200
+        _StarAmount("Star Amount", Range(0.9,1)) = 0.997
+        _SunFlare("Sun Flare", Range(0, 1.0)) = 0.4
+        _SunLightColor("Sun Light Color", Color) = (1,1,1)
+        _MoonFlare("Moon Flare", Range(0, 1.0)) = 0.1     
+        _SpecularPower("Specular Power", Float) = 64
+        _SpecularIntensity("Specular Intensity", Float) = 2
     }
 
     SubShader
@@ -664,6 +680,19 @@ Shader "Hidden/Sky/VolumetricClouds"
             SAMPLER(s_linear_repeat_sampler);
             SAMPLER(s_trilinear_repeat_sampler);
             SAMPLER(sampler_VolumetricCloudsAmbientProbe);
+
+
+            TEXTURE2D(_TerrainFarChunksTex);
+            SAMPLER(sampler_point_repeat);
+            half _ShadowIntensity;
+
+            half _VPAmbientLight;
+            half _VPDaylightShadowAtten;
+
+            #pragma multi_compile_fragment _ _TERRAIN
+            #pragma multi_compile_fragment _ _SHADOWS
+            #pragma multi_compile_fragment _ _HIGH_RANGE
+
 
             // Note: This pass doesn't need to support dynamic resolution
             //float4 _ScreenResolution;

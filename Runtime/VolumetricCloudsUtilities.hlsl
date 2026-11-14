@@ -715,4 +715,53 @@ void EvaluateCloud(CloudProperties cloudProperties, half3 rayDirection,
     volumetricRay.transmittance *= transmittance;
 }
 
+#ifdef _TERRAIN
+// Function that evaluates the terrain properties at a given absolute world space position
+void EvaluateTerrainProperties(float2 positionWS, out half4 properties)
+{    
+    properties = SAMPLE_TEXTURE2D_LOD(_TerrainFarChunksTex, sampler_point_repeat, positionWS * _SnapshotData.z, 0);
+
+#ifndef _HIGH_RANGE // Scaling by _TerrainMaxAltitude can be avoided in floating point texture formats
+    properties.w = properties.w * _TerrainMaxAltitude;
+#endif // _HIGH_RANGE
+}
+
+// Evaluates the terrain colour from this positionAdd commentMore actions
+void EvaluateTerrain(half3 rayDirection, float3 currentPositionWS,
+    float relativeRayDistance, inout VolumetricRayResult volumetricRay)
+{
+    float3 wpos = floor(currentPositionWS) + 0.5;
+
+    // compute normal
+    half3 dc = abs(currentPositionWS - wpos);
+    dc.y *= half(1.05); // avoid artifacts at the edges
+    half3 signs = -sign(rayDirection);
+
+    half3 norm;
+    if (dc.z > dc.x && dc.z > dc.y) norm = half3(0.0, 0.0, signs.z);
+    else if (dc.x > dc.z && dc.x > dc.y) norm = half3(signs.x, 0.0, 0.0);
+    else norm = half3(0.0, signs.y, 0.0);
+
+    const half _FadeIn = half(1.5);
+
+    // add fog
+    half fogFactor = _FadeIn / relativeRayDistance;
+    half heightFog = currentPositionWS.y / _TerrainMaxAltitude;
+    heightFog *= heightFog * fogFactor;
+    half fog = saturate(fogFactor + heightFog);
+
+    half3 sunDirection = GetMainLight().direction;
+
+    // diffuse lambertian wrap
+    half ndt = dot(sunDirection, norm) * half(0.5) + half(0.5);
+    volumetricRay.scattering *= lerp(ndt, half(1.0), relativeRayDistance);
+
+    // day/night cycle
+    volumetricRay.scattering *= saturate(mad(sunDirection.y, half(2.0), half(1.0)));
+
+    volumetricRay.scattering *= fog * fog;
+    volumetricRay.transmittance = half(1.0) - fog;
+}
+#endif // _TERRAIN
+
 #endif

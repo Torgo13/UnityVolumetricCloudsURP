@@ -36,6 +36,14 @@ float _EarthRadius;
 half _AccumulationFactor;
 half _NormalizationFactor;
 half _CloudNearPlane;
+float4 _SnapshotData; // x: boundsMin.x, y: boundsMin.z, z: 1/TEXTURE_SIZE, w: visibleDistance
+half4 _WaterColor;
+half3 _ShoreColor;
+half _WaterReflectionsIntensity;
+float _TerrainMaxAltitude;
+float _WaterLevel;
+half _SpecularPower;
+half _SpecularIntensity;
 CBUFFER_END
 
 // Ambient Probe (unity_SH)

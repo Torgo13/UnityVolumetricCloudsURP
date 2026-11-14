@@ -84,6 +84,77 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
             // Do the ray march for every step that we can.
             while (currentIndex < (int)_NumPrimarySteps && currentDistance < totalDistance)
             {                
+#ifdef _TERRAIN
+                // Only check for terrain below the maximum terrain height
+                if (currentPositionWS.y < _TerrainMaxAltitude)
+                {
+                    activeSampling = true;
+
+                    // Evaluate the full resolution terrain texture
+                    half4 terrainProperties;
+                    EvaluateTerrainProperties(currentPositionWS.xz, terrainProperties);
+                    if (currentPositionWS.y < terrainProperties.w)
+                    {
+#if defined(SHADER_API_MOBILE)
+                        const int BSEARCH_STEPS = 5;
+#else
+                        const int BSEARCH_STEPS = 8;
+#endif // SHADER_API_MOBILE
+
+                        // Refine hit position using binary search
+                        float3 wpos;
+                        float relativeRayDistance = currentDistance / 512.0;
+                        float t1 = currentDistance; // Current distance
+                        float t0 = currentDistance - stepS; // Previous distance
+                        half ao = half(1.0);
+                        for (int i = 0; i < BSEARCH_STEPS; i++) {
+                            currentDistance = (t1 + t0) * 0.5; // Midpoint between previous and current distance
+                            currentPositionWS = cloudRay.originWS + (rayMarchRange.start + currentDistance) * cloudRay.direction;
+                            wpos = floor(currentPositionWS) + 0.5;
+                            EvaluateTerrainProperties(wpos.xz, terrainProperties);
+                            if (wpos.y < terrainProperties.w) {
+                                t1 = currentDistance;
+                                relativeRayDistance = currentDistance / 512.0;
+                                ao = saturate(0.25 + frac(currentPositionWS.y) * 0.75 + relativeRayDistance);
+                            } else {
+                                t0 = currentDistance;
+                            }
+                        }
+                        
+                        float3 sunPosition = _MainLightPosition.xyz;
+                        half atten = half(0.25);
+                        
+#ifdef _SHADOWS
+                        // Shadows
+                        const half incr = half(1.015);
+                        for (float j = 2.0; j < _TerrainMaxAltitude; j = mad(j, incr, incr)) {
+                            float3 rpos = currentPositionWS + sunPosition * j;                    
+                            half4 terrainShadowProperties;
+                            EvaluateTerrainProperties(rpos.xz, terrainShadowProperties);
+                            if (rpos.y > _TerrainMaxAltitude * 2 // Above terrain max altitude so in direct light
+                                || rpos.y < terrainShadowProperties.w) {
+                                atten = 0;
+                                break;
+                            }
+                        }
+#endif // _SHADOWS
+
+                        volumetricRay.meanDistance = currentDistance;
+                        meanDistanceDivider = 1.0;
+                        
+                        // Evaluate the terrain at the position
+                        //atten *= saturate(saturate(atten + sunPosition.y * _VPDaylightShadowAtten) + _VPAmbientLight);
+
+                        // apply shadow attenuation
+                        volumetricRay.scattering = terrainProperties.xyz * saturate(ao * atten);
+
+                        EvaluateTerrain(cloudRay.direction, currentPositionWS, relativeRayDistance, volumetricRay);
+                        volumetricRay.invalidRay = false;
+                        break;
+                    }
+                }
+#endif // _TERRAIN
+
                 // Compute the camera-distance based attenuation
                 float densityAttenuationValue = DensityFadeValue(rayMarchRange.start + currentDistance);
 
