@@ -57,6 +57,13 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
             // - Far plane
             float totalDistance = min(rayMarchRange.end, cloudRay.maxRayLength) - rayMarchRange.start;
 
+#ifdef _TERRAIN // Increase sample count up to 16 times near the horizon
+            half scale = half(1.0) + cos(half(HALF_PI) * cloudRay.direction.y);
+            scale = (scale * scale) * (scale * scale);
+            _NumPrimarySteps *= scale;
+            _MaxStepSize *= rcp(scale);
+#endif // _TERRAIN
+
             // Evaluate our integration step
             float stepS = min(totalDistance / (float)_NumPrimarySteps, _MaxStepSize);
             totalDistance = stepS * _NumPrimarySteps;
@@ -133,7 +140,7 @@ VolumetricRayResult TraceVolumetricRay(CloudRay cloudRay)
                             EvaluateTerrainProperties(rpos.xz, terrainShadowProperties);
                             if (rpos.y > _TerrainMaxAltitude * 2 // Above terrain max altitude so in direct light
                                 || rpos.y < terrainShadowProperties.w) {
-                                atten = 0;
+                                atten = 0.025;
                                 break;
                             }
                         }
