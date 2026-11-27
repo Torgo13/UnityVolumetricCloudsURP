@@ -303,8 +303,6 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
     #endif
 
         var stack = VolumeManager.instance.stack;
-        VolumetricClouds cloudsVolume = stack.GetComponent<VolumetricClouds>();
-        ColorAdjustments colorAdjustments = stack.GetComponent<ColorAdjustments>();
         VolumetricClouds cloudsVolume = stack?.GetComponent<VolumetricClouds>();
         ColorAdjustments colorAdjustments = stack?.GetComponent<ColorAdjustments>();
 #if DEBUG
@@ -324,7 +322,7 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
         if (isVolumeActive && (renderingData.cameraData.cameraType == CameraType.Game || renderingData.cameraData.cameraType == CameraType.SceneView || isProbeCamera))
         {
         #if URP_PBSKY
-            VisualEnvironment visualEnvironment = stack.GetComponent<VisualEnvironment>();
+            VisualEnvironment visualEnvironment = stack?.GetComponent<VisualEnvironment>();
 #if OPTIMISATION_UNITY
             bool visualEnvironmentActive = visualEnvironment != null && visualEnvironment.IsActive();
 #endif // OPTIMISATION_UNITY
@@ -351,8 +349,8 @@ public class VolumetricCloudsURP : ScriptableRendererFeature
             volumetricCloudsShadowsPass.cloudsVolume = cloudsVolume;
 
         #if URP_PBSKY
-            PhysicallyBasedSky pbrSky = stack.GetComponent<PhysicallyBasedSky>();
-            Fog fog = stack.GetComponent<Fog>();
+            PhysicallyBasedSky pbrSky = stack?.GetComponent<PhysicallyBasedSky>();
+            Fog fog = stack?.GetComponent<Fog>();
 #if OPTIMISATION_UNITY
             volumetricCloudsPass.hasAtmosphericScattering = visualEnvironmentActive && visualEnvironment.skyType.value == (int)VisualEnvironment.SkyType.PhysicallyBased && pbrSky != null && pbrSky.IsActive() && pbrSky.atmosphericScattering.value;
 #else
