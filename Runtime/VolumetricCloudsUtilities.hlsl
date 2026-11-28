@@ -742,15 +742,16 @@ void EvaluateTerrain(half3 rayDirection, float3 currentPositionWS,
     else if (dc.x > dc.z && dc.x > dc.y) norm = half3(signs.x, 0.0, 0.0);
     else norm = half3(0.0, signs.y, 0.0);
 
-    const half _FadeIn = half(1.5);
+    const half _FadeIn = half(1.0);
+    half3 sunDirection = GetMainLight().direction;
+    half alignment = mad(dot(sunDirection, -rayDirection), half(0.5), half(0.5));
 
     // add fog
     half fogFactor = _FadeIn / relativeRayDistance;
     half heightFog = currentPositionWS.y / _TerrainMaxAltitude;
     heightFog *= heightFog * fogFactor;
     half fog = saturate(fogFactor + heightFog);
-
-    half3 sunDirection = GetMainLight().direction;
+    fog *= fog;
 
     // diffuse lambertian wrap
     half ndt = dot(sunDirection, norm) * half(0.5) + half(0.5);
@@ -759,8 +760,10 @@ void EvaluateTerrain(half3 rayDirection, float3 currentPositionWS,
     // day/night cycle
     volumetricRay.scattering *= saturate(mad(sunDirection.y, half(2.0), half(1.0)));
 
-    volumetricRay.scattering *= fog * fog;
-    volumetricRay.transmittance = half(1.0) - fog;
+    // Colour brightness
+    volumetricRay.scattering *= fog;
+    // Colour reduction
+    volumetricRay.transmittance = saturate(alignment - fog);
 }
 #endif // _TERRAIN
 
